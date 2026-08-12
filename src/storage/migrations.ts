@@ -17,16 +17,18 @@ CREATE TABLE repositories (
 CREATE TABLE worktrees (
   id INTEGER PRIMARY KEY,
   repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
-  path TEXT NOT NULL UNIQUE,
+  path TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  UNIQUE (repository_id, path)
 ) STRICT;
+
+CREATE INDEX worktrees_repository_id_index ON worktrees(repository_id);
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   pi_session_id TEXT NOT NULL UNIQUE,
   session_file TEXT,
-  repository_id INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
   worktree_id INTEGER REFERENCES worktrees(id) ON DELETE SET NULL,
   started_at TEXT NOT NULL,
   ended_at TEXT,
@@ -36,6 +38,8 @@ CREATE TABLE sessions (
   initial_head_sha TEXT,
   final_head_sha TEXT
 ) STRICT;
+
+CREATE INDEX sessions_worktree_id_index ON sessions(worktree_id);
 
 CREATE TABLE interactions (
   id INTEGER PRIMARY KEY,
@@ -52,7 +56,8 @@ CREATE TABLE interactions (
   settled_at TEXT,
   state TEXT NOT NULL DEFAULT 'settled'
     CHECK (state IN ('settled', 'interrupted')),
-  UNIQUE (session_id, pi_leaf_entry_id)
+  UNIQUE (session_id, pi_leaf_entry_id),
+  UNIQUE (id, session_id)
 ) STRICT;
 
 CREATE INDEX interactions_started_at_index ON interactions(started_at);
@@ -63,55 +68,58 @@ CREATE VIRTUAL TABLE interaction_fts USING fts5(
   summary,
   outcome,
   remaining_work,
-  interaction_id UNINDEXED,
-  tokenize = 'unicode61'
+  content = 'interactions',
+  content_rowid = 'id',
+  tokenize = 'porter unicode61'
 );
 
 CREATE TRIGGER interactions_fts_insert AFTER INSERT ON interactions BEGIN
-  INSERT INTO interaction_fts(
-    rowid,
-    user_request,
-    summary,
-    outcome,
-    remaining_work,
-    interaction_id
-  ) VALUES (
-    new.id,
-    new.user_request,
-    new.summary,
-    new.outcome,
-    new.remaining_work,
-    new.id
-  );
+  INSERT INTO interaction_fts(rowid, user_request, summary, outcome, remaining_work)
+  VALUES (new.id, new.user_request, new.summary, new.outcome, new.remaining_work);
 END;
 
 CREATE TRIGGER interactions_fts_update AFTER UPDATE ON interactions BEGIN
-  DELETE FROM interaction_fts WHERE rowid = old.id;
   INSERT INTO interaction_fts(
+    interaction_fts,
     rowid,
     user_request,
     summary,
     outcome,
-    remaining_work,
-    interaction_id
+    remaining_work
   ) VALUES (
-    new.id,
-    new.user_request,
-    new.summary,
-    new.outcome,
-    new.remaining_work,
-    new.id
+    'delete',
+    old.id,
+    old.user_request,
+    old.summary,
+    old.outcome,
+    old.remaining_work
   );
+  INSERT INTO interaction_fts(rowid, user_request, summary, outcome, remaining_work)
+  VALUES (new.id, new.user_request, new.summary, new.outcome, new.remaining_work);
 END;
 
 CREATE TRIGGER interactions_fts_delete AFTER DELETE ON interactions BEGIN
-  DELETE FROM interaction_fts WHERE rowid = old.id;
+  INSERT INTO interaction_fts(
+    interaction_fts,
+    rowid,
+    user_request,
+    summary,
+    outcome,
+    remaining_work
+  ) VALUES (
+    'delete',
+    old.id,
+    old.user_request,
+    old.summary,
+    old.outcome,
+    old.remaining_work
+  );
 END;
 
 CREATE TABLE git_observations (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  interaction_id INTEGER REFERENCES interactions(id) ON DELETE CASCADE,
+  interaction_id INTEGER,
   phase TEXT NOT NULL CHECK (
     phase IN ('session_start', 'before_work', 'after_work', 'session_shutdown')
   ),
@@ -125,8 +133,14 @@ CREATE TABLE git_observations (
   origin_remote TEXT,
   upstream_remote TEXT,
   ambiguous INTEGER NOT NULL DEFAULT 0 CHECK (ambiguous IN (0, 1)),
-  ambiguity_reason TEXT
+  ambiguity_reason TEXT,
+  FOREIGN KEY (interaction_id, session_id)
+    REFERENCES interactions(id, session_id) ON DELETE CASCADE
 ) STRICT;
+
+CREATE INDEX git_observations_session_id_index ON git_observations(session_id);
+CREATE INDEX git_observations_interaction_index
+  ON git_observations(interaction_id, session_id);
 
 CREATE TABLE changed_files (
   id INTEGER PRIMARY KEY,
@@ -157,6 +171,8 @@ CREATE TABLE interaction_commits (
   reason TEXT,
   PRIMARY KEY (interaction_id, commit_id)
 ) STRICT, WITHOUT ROWID;
+
+CREATE INDEX interaction_commits_commit_id_index ON interaction_commits(commit_id);
 
 CREATE TABLE pull_requests (
   id INTEGER PRIMARY KEY,
@@ -204,6 +220,9 @@ CREATE TABLE interaction_pull_requests (
   PRIMARY KEY (interaction_id, pull_request_id, evidence)
 ) STRICT, WITHOUT ROWID;
 
+CREATE INDEX interaction_pull_requests_pull_request_id_index
+  ON interaction_pull_requests(pull_request_id);
+
 CREATE TABLE goals (
   id INTEGER PRIMARY KEY,
   session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -233,6 +252,8 @@ CREATE TABLE model_usage (
   cache_write_cost REAL NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0
 ) STRICT;
+
+CREATE INDEX model_usage_interaction_id_index ON model_usage(interaction_id);
 `;
 
 export const migrations: readonly Migration[] = [
@@ -249,27 +270,32 @@ export function applyMigrations(
   database: DatabaseSync,
   availableMigrations: readonly Migration[] = migrations,
 ): void {
-  const currentVersion = readUserVersion(database);
   validateMigrations(availableMigrations);
-
   const latestVersion = availableMigrations.at(-1)?.version ?? 0;
-  if (currentVersion > latestVersion) {
-    throw new Error(
-      `Ledger database version ${currentVersion} is newer than supported version ${latestVersion}`,
-    );
-  }
 
-  for (const migration of availableMigrations) {
-    if (migration.version <= currentVersion) continue;
-
+  while (true) {
     database.exec("BEGIN IMMEDIATE");
     try {
+      // Read the version only after taking the write lock. Another Pi process
+      // may have migrated the shared ledger while this connection was waiting.
+      const currentVersion = readUserVersion(database);
+      if (currentVersion > latestVersion) {
+        throw new Error(
+          `Ledger database version ${currentVersion} is newer than supported version ${latestVersion}`,
+        );
+      }
+
+      const migration = availableMigrations[currentVersion];
+      if (migration === undefined) {
+        database.exec("COMMIT");
+        return;
+      }
+
       migration.migrate(database);
       database.exec(`PRAGMA user_version = ${migration.version}`);
       database.exec("COMMIT");
     } catch (error) {
-      database.exec("ROLLBACK");
-      throw error;
+      rollbackMigration(database, error);
     }
   }
 }
@@ -280,12 +306,26 @@ export function readUserVersion(database: DatabaseSync): number {
 }
 
 function validateMigrations(availableMigrations: readonly Migration[]): void {
-  let previousVersion = 0;
-
-  for (const migration of availableMigrations) {
-    if (!Number.isSafeInteger(migration.version) || migration.version <= previousVersion) {
-      throw new Error("Ledger migrations must have unique, increasing positive versions");
+  for (const [index, migration] of availableMigrations.entries()) {
+    const expectedVersion = index + 1;
+    if (!Number.isSafeInteger(migration.version) || migration.version !== expectedVersion) {
+      throw new Error(
+        `Ledger migration version ${migration.version} is invalid; expected ${expectedVersion}`,
+      );
     }
-    previousVersion = migration.version;
   }
+}
+
+function rollbackMigration(database: DatabaseSync, migrationError: unknown): never {
+  if (database.isTransaction) {
+    try {
+      database.exec("ROLLBACK");
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [migrationError, rollbackError],
+        "Ledger migration and rollback both failed",
+      );
+    }
+  }
+  throw migrationError;
 }

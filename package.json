@@ -9,6 +9,11 @@
     "pi-package",
     "sqlite"
   ],
+  "homepage": "https://github.com/rcssdy/pi-ledger#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rcssdy/pi-ledger.git"
+  },
   "files": [
     "src",
     "README.md"
@@ -20,11 +25,12 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test"
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "prepublishOnly": "npm run check"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@types/node": "^26.0.0",
+    "@types/node": "^24.0.0",
     "oxfmt": "^0.63.0",
     "oxlint": "^1.78.0",
     "typescript": "^7.0.2",
@@ -34,7 +40,7 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=24.15.0"
   },
   "pi": {
     "extensions": [

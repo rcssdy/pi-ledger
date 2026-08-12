@@ -1,5 +1,6 @@
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 export interface LedgerPaths {
   agentDirectory: string;
@@ -10,10 +11,9 @@ export interface LedgerPaths {
 
 /** Resolve every path owned by pi-ledger from Pi's agent directory. */
 export function resolveLedgerPaths(agentDirectory?: string): LedgerPaths {
-  const configuredDirectory = agentDirectory ?? process.env.PI_CODING_AGENT_DIR;
-  const resolvedAgentDirectory = configuredDirectory
-    ? resolve(configuredDirectory)
-    : join(homedir(), ".pi", "agent");
+  const configuredDirectory =
+    agentDirectory === undefined ? getAgentDir() : expandTilde(agentDirectory);
+  const resolvedAgentDirectory = resolve(configuredDirectory);
   const ledgerDirectory = join(resolvedAgentDirectory, "ledger");
 
   return {
@@ -24,9 +24,10 @@ export function resolveLedgerPaths(agentDirectory?: string): LedgerPaths {
   };
 }
 
-/** SQLite requires an absolute filename when the working directory may change. */
-export function assertAbsoluteDatabasePath(databasePath: string): void {
-  if (!isAbsolute(databasePath)) {
-    throw new Error(`Ledger database path must be absolute: ${databasePath}`);
+function expandTilde(path: string): string {
+  if (path === "~") return homedir();
+  if (path.startsWith("~/") || path.startsWith("~\\")) {
+    return join(homedir(), path.slice(2));
   }
+  return path;
 }
