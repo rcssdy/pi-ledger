@@ -1,0 +1,44 @@
+{
+  "name": "pi-ledger",
+  "version": "0.0.0",
+  "description": "A Pi extension that records work history and connects sessions to Git commits and GitHub pull requests.",
+  "keywords": [
+    "git",
+    "github",
+    "pi-extension",
+    "pi-package",
+    "sqlite"
+  ],
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@types/node": "^26.0.0",
+    "oxfmt": "^0.63.0",
+    "oxlint": "^1.78.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
