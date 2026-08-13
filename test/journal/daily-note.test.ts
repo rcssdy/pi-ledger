@@ -12,9 +12,10 @@ afterEach(() => {
 });
 
 describe("daily note writer", () => {
-  it("atomically writes a deterministic daily journal", async () => {
-    const notesDirectory = mkdtempSync(join(tmpdir(), "pi-ledger-notes-"));
-    directories.push(notesDirectory);
+  it("writes the exact daily journal format", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-ledger-notes-"));
+    const notesDirectory = join(root, "notes");
+    directories.push(root);
     const writer = new DailyNoteWriter(
       {
         listDirtyDates: () => [],
@@ -22,30 +23,51 @@ describe("daily note writer", () => {
         listDailyEntries: () => [
           {
             id: 1,
-            piSessionId: "session-1",
-            userEntryId: "user-1",
-            sessionFile: "/sessions/one.jsonl",
+            piSessionId: "019f…",
+            userEntryId: "abc123",
+            sessionFile: "/home/me/.pi/agent/sessions/project/session.jsonl",
             cwd: "/work/pi-ledger",
-            request: "Generate #daily [notes]",
+            request: "Add timezone-aware journal timestamps and tests",
             state: "settled",
-            startedAt: "2026-08-12T12:01:00.000Z",
-            localTime: "12:01",
+            startedAt: "2026-08-12T14:32:00.000Z",
+            localTime: "14:32",
             models: [
               {
                 provider: "openai",
-                model: "gpt-test",
-                responses: 2,
-                totalTokens: 135,
-                totalCost: 0.33,
+                model: "gpt-5.6-sol",
+                responses: 4,
+                totalTokens: 71_420,
+                totalCost: 1.61,
+              },
+              {
+                provider: "anthropic",
+                model: "claude-sonnet-4-6",
+                responses: 1,
+                totalTokens: 11_071,
+                totalCost: 0.11,
               },
             ],
             tools: [
               {
                 name: "read",
-                executions: 2,
-                failures: 1,
-                totalTokens: 5,
-                totalCost: 0.01,
+                executions: 8,
+                failures: 0,
+                totalTokens: 0,
+                totalCost: 0,
+              },
+              {
+                name: "edit",
+                executions: 3,
+                failures: 0,
+                totalTokens: 0,
+                totalCost: 0,
+              },
+              {
+                name: "bash",
+                executions: 5,
+                failures: 0,
+                totalTokens: 0,
+                totalCost: 0,
               },
             ],
           },
@@ -57,11 +79,22 @@ describe("daily note writer", () => {
     const path = await writer.regenerate("2026-08-12");
     const markdown = readFileSync(path, "utf8");
     expect(path).toBe(join(notesDirectory, "2026-08-12.md"));
-    expect(markdown).toContain("# Daily Journal — 2026-08-12");
-    expect(markdown).toContain(String.raw`Generate \#daily \[notes\]`);
-    expect(markdown).toContain("**Usage:** 140 tokens · $0.34");
-    expect(markdown).toContain("**Tools:** `read` ×2, 1 failed");
-    expect(markdown).toContain("file:///sessions/one.jsonl");
+    expect(markdown).toBe(`# Daily Journal — 2026-08-12
+
+## pi-ledger
+
+### 14:32 — Add timezone-aware journal timestamps and tests
+
+**Transcript:** [Open Pi session](<file:///home/me/.pi/agent/sessions/project/session.jsonl>) · Session \`019f…\` · entry \`abc123\`
+
+**Models:** \`openai/gpt-5.6-sol\`, \`anthropic/claude-sonnet-4-6\`
+
+**Usage:** 82,491 tokens · $1.72
+- \`openai/gpt-5.6-sol\`: 71,420 tokens · $1.61 · 4 responses
+- \`anthropic/claude-sonnet-4-6\`: 11,071 tokens · $0.11 · 1 response
+
+**Tools:** \`read\` ×8 · \`edit\` ×3 · \`bash\` ×5
+`);
   });
 
   it("keeps projects with the same directory name separate", async () => {
