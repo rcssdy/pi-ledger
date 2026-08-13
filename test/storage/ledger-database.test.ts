@@ -30,7 +30,7 @@ describe("ledger database", () => {
     }
     expect(ledger.health()).toEqual({
       databasePath: ledger.paths.databasePath,
-      userVersion: 1,
+      userVersion: 2,
       foreignKeys: true,
       journalMode: "wal",
       synchronous: 1,
@@ -47,8 +47,123 @@ describe("ledger database", () => {
     (await openLedgerDatabase({ agentDirectory })).close();
     const reopened = await openLedgerDatabase({ agentDirectory });
 
-    expect(reopened.health().userVersion).toBe(1);
+    expect(reopened.health().userVersion).toBe(2);
     reopened.close();
+  });
+
+  it("promotes pending lifecycle data idempotently with assistant, tool, and usage metadata", async () => {
+    const agentDirectory = makeTemporaryDirectory();
+    const ledger = await openLedgerDatabase({ agentDirectory });
+    const lifecycle = ledger.lifecycle;
+    lifecycle.startSession({
+      piSessionId: "session-lifecycle",
+      sessionFile: "/sessions/session.jsonl",
+      startedAt: "2026-08-12T12:00:00.000Z",
+    });
+    lifecycle.beginInteraction("session-lifecycle", {
+      piLeafEntryId: "user-leaf",
+      userRequest: "Original request",
+      startedAt: "2026-08-12T12:01:00.000Z",
+    });
+    lifecycle.beginInteraction("session-lifecycle", {
+      piLeafEntryId: "user-leaf",
+      userRequest: "Expanded request",
+      startedAt: "2026-08-12T12:02:00.000Z",
+    });
+    expect(lifecycle.listPendingInteractions("session-lifecycle")).toEqual([
+      {
+        piLeafEntryId: "user-leaf",
+        userRequest: "Expanded request",
+        startedAt: "2026-08-12T12:01:00.000Z",
+      },
+    ]);
+
+    const usage = {
+      input: 100,
+      output: 20,
+      cacheRead: 10,
+      cacheWrite: 5,
+      cacheWrite1h: 4,
+      reasoning: 12,
+      totalTokens: 135,
+      cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2, total: 3.3 },
+    };
+    const settlement = {
+      piSessionId: "session-lifecycle",
+      piLeafEntryId: "user-leaf",
+      settledAt: "2026-08-12T12:03:00.000Z",
+      assistants: [
+        {
+          piEntryId: "assistant-entry",
+          api: "responses",
+          provider: "openai",
+          model: "gpt-test",
+          stopReason: "stop",
+          createdAt: "2026-08-12T12:02:30.000Z",
+          usage,
+        },
+      ],
+      tools: [
+        {
+          piEntryId: "tool-entry",
+          toolCallId: "tool-call",
+          toolName: "read",
+          startedAt: "2026-08-12T12:02:00.000Z",
+          endedAt: "2026-08-12T12:02:10.000Z",
+          isError: false,
+          usage,
+        },
+      ],
+    } as const;
+    lifecycle.settleInteraction(settlement);
+    lifecycle.settleInteraction(settlement);
+    expect(lifecycle.listPendingInteractions("session-lifecycle")).toEqual([]);
+
+    const databasePath = ledger.paths.databasePath;
+    ledger.close();
+    const database = openConfiguredDatabase(databasePath);
+    expect(readCount(database, "interactions")).toBe(1);
+    expect(readCount(database, "assistant_messages")).toBe(1);
+    expect(readCount(database, "tool_executions")).toBe(1);
+    expect(readCount(database, "model_usage")).toBe(2);
+    expect(
+      database
+        .prepare("SELECT cache_write_1h_tokens, reasoning_tokens FROM model_usage LIMIT 1")
+        .get(),
+    ).toEqual({ cache_write_1h_tokens: 4, reasoning_tokens: 12 });
+    expect(database.prepare("SELECT user_request, state FROM interactions").get()).toEqual({
+      user_request: "Expanded request",
+      state: "settled",
+    });
+    database.close();
+  });
+
+  it("turns remaining pending interactions into interrupted records at shutdown", async () => {
+    const agentDirectory = makeTemporaryDirectory();
+    const ledger = await openLedgerDatabase({ agentDirectory });
+    ledger.lifecycle.startSession({
+      piSessionId: "session-interrupted",
+      startedAt: "2026-08-12T12:00:00.000Z",
+    });
+    ledger.lifecycle.beginInteraction("session-interrupted", {
+      piLeafEntryId: "leaf-interrupted",
+      userRequest: "Interrupted request",
+      startedAt: "2026-08-12T12:01:00.000Z",
+    });
+    ledger.lifecycle.interruptPendingInteractions(
+      "session-interrupted",
+      "2026-08-12T12:02:00.000Z",
+    );
+    ledger.lifecycle.closeSession("session-interrupted", "2026-08-12T12:02:00.000Z");
+
+    const databasePath = ledger.paths.databasePath;
+    ledger.close();
+    const database = openConfiguredDatabase(databasePath);
+    expect(database.prepare("SELECT state FROM interactions").get()).toEqual({
+      state: "interrupted",
+    });
+    expect(database.prepare("SELECT state FROM sessions").get()).toEqual({ state: "closed" });
+    database.close();
   });
 
   it("enforces interaction idempotency and foreign keys", async () => {
@@ -205,6 +320,8 @@ describe("ledger database", () => {
         "interaction_commits_commit_id_index",
         "interaction_pull_requests_pull_request_id_index",
         "model_usage_interaction_id_index",
+        "assistant_messages_interaction_id_index",
+        "tool_executions_interaction_id_index",
       ]),
     );
 
@@ -287,6 +404,13 @@ function searchInteractionIds(database: DatabaseSync, query: string): number[] {
 function readUserVersion(database: DatabaseSync): number {
   const row = database.prepare("PRAGMA user_version").get() as { user_version: number };
   return row.user_version;
+}
+
+function readCount(database: DatabaseSync, table: string): number {
+  const row = database.prepare(`SELECT count(*) AS count FROM ${table}`).get() as {
+    count: number;
+  };
+  return row.count;
 }
 
 function tableExists(database: DatabaseSync, table: string): boolean {

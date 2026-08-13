@@ -256,11 +256,128 @@ CREATE TABLE model_usage (
 CREATE INDEX model_usage_interaction_id_index ON model_usage(interaction_id);
 `;
 
+const LIFECYCLE_SCHEMA = `
+CREATE TABLE pending_interactions (
+  session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  pi_leaf_entry_id TEXT NOT NULL,
+  user_request TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pi_leaf_entry_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE assistant_messages (
+  id INTEGER PRIMARY KEY,
+  interaction_id INTEGER NOT NULL REFERENCES interactions(id) ON DELETE CASCADE,
+  pi_entry_id TEXT NOT NULL,
+  api TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  stop_reason TEXT NOT NULL,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (interaction_id, pi_entry_id)
+) STRICT;
+
+CREATE INDEX assistant_messages_interaction_id_index
+  ON assistant_messages(interaction_id);
+
+CREATE TABLE tool_executions (
+  id INTEGER PRIMARY KEY,
+  interaction_id INTEGER NOT NULL REFERENCES interactions(id) ON DELETE CASCADE,
+  pi_entry_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  started_at TEXT,
+  ended_at TEXT NOT NULL,
+  is_error INTEGER NOT NULL CHECK (is_error IN (0, 1)),
+  UNIQUE (interaction_id, pi_entry_id),
+  UNIQUE (interaction_id, tool_call_id)
+) STRICT;
+
+CREATE INDEX tool_executions_interaction_id_index
+  ON tool_executions(interaction_id);
+
+ALTER TABLE model_usage RENAME TO model_usage_v1;
+
+CREATE TABLE model_usage (
+  id INTEGER PRIMARY KEY,
+  interaction_id INTEGER NOT NULL REFERENCES interactions(id) ON DELETE CASCADE,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('assistant', 'tool')),
+  source_id TEXT NOT NULL,
+  provider TEXT,
+  model TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h_tokens INTEGER,
+  reasoning_tokens INTEGER,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  input_cost REAL NOT NULL DEFAULT 0,
+  output_cost REAL NOT NULL DEFAULT 0,
+  cache_read_cost REAL NOT NULL DEFAULT 0,
+  cache_write_cost REAL NOT NULL DEFAULT 0,
+  total_cost REAL NOT NULL DEFAULT 0,
+  UNIQUE (interaction_id, source_kind, source_id)
+) STRICT;
+
+INSERT INTO model_usage (
+  id,
+  interaction_id,
+  source_kind,
+  source_id,
+  provider,
+  model,
+  input_tokens,
+  output_tokens,
+  cache_read_tokens,
+  cache_write_tokens,
+  cache_write_1h_tokens,
+  reasoning_tokens,
+  total_tokens,
+  input_cost,
+  output_cost,
+  cache_read_cost,
+  cache_write_cost,
+  total_cost
+)
+SELECT
+  id,
+  interaction_id,
+  'assistant',
+  'legacy-' || id,
+  provider,
+  model,
+  input_tokens,
+  output_tokens,
+  cache_read_tokens,
+  cache_write_tokens,
+  NULL,
+  NULL,
+  total_tokens,
+  input_cost,
+  output_cost,
+  cache_read_cost,
+  cache_write_cost,
+  total_cost
+FROM model_usage_v1;
+
+DROP TABLE model_usage_v1;
+
+CREATE INDEX model_usage_interaction_id_index ON model_usage(interaction_id);
+`;
+
 export const migrations: readonly Migration[] = [
   {
     version: 1,
     migrate(database) {
       database.exec(INITIAL_SCHEMA);
+    },
+  },
+  {
+    version: 2,
+    migrate(database) {
+      database.exec(LIFECYCLE_SCHEMA);
     },
   },
 ];

@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 
 import type { DatabaseSync } from "node:sqlite";
 
+import { SqliteLifecycleStore, type LifecycleStore } from "./lifecycle-store.js";
 import { applyMigrations, readUserVersion } from "./migrations.js";
 import { resolveLedgerPaths, type LedgerPaths } from "./paths.js";
 
@@ -20,12 +21,14 @@ export interface LedgerDatabaseHealth {
 
 export interface LedgerDatabase {
   readonly paths: LedgerPaths;
+  readonly lifecycle: LifecycleStore;
   health(): LedgerDatabaseHealth;
   close(): void;
 }
 
 class SqliteLedgerDatabase implements LedgerDatabase {
   readonly paths: LedgerPaths;
+  readonly lifecycle: LifecycleStore;
 
   readonly #database: DatabaseSync;
   #closed = false;
@@ -33,6 +36,7 @@ class SqliteLedgerDatabase implements LedgerDatabase {
   constructor(database: DatabaseSync, paths: LedgerPaths) {
     this.#database = database;
     this.paths = paths;
+    this.lifecycle = new SqliteLifecycleStore(database);
   }
 
   health(): LedgerDatabaseHealth {
