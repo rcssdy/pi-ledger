@@ -24,7 +24,7 @@ const USAGE = {
 
 describe("journal recorder", () => {
   it("partitions and aggregates model and tool facts by initiating user entry", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     const recorder = new JournalRecorder(journal, {
       now: () => new Date("2026-08-12T12:10:00.000Z"),
     });
@@ -73,7 +73,7 @@ describe("journal recorder", () => {
   });
 
   it("keeps pending work across reload and interrupts it at final shutdown", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     const recorder = new JournalRecorder(journal, {
       now: () => new Date("2026-08-12T12:10:00.000Z"),
     });

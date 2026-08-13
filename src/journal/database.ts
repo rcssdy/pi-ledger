@@ -13,7 +13,6 @@ import type {
   JournalSearchQuery,
   JournalSearchResult,
   ModelFacts,
-  OpenJournalOptions,
   PendingJournalEntry,
   RecordedJournalEntry,
   SettleJournalEntry,
@@ -103,8 +102,7 @@ export class JournalDatabase implements Journal {
   }
 
   settleEntry(input: SettleJournalEntry): RecordedJournalEntry | undefined {
-    let recorded: RecordedJournalEntry | undefined;
-    this.#transaction(() => {
+    return this.#transaction(() => {
       const row = this.#database
         .prepare(`
           SELECT id, local_date AS localDate
@@ -153,14 +151,12 @@ export class JournalDatabase implements Journal {
         );
       }
       this.#markNoteDirty(row.localDate);
-      recorded = { id: row.id, localDate: row.localDate, state };
+      return { id: row.id, localDate: row.localDate, state };
     });
-    return recorded;
   }
 
   interruptPendingEntries(piSessionId: string, settledAt: string): readonly RecordedJournalEntry[] {
-    const recorded: RecordedJournalEntry[] = [];
-    this.#transaction(() => {
+    return this.#transaction(() => {
       const rows = this.#database
         .prepare(`
           SELECT id, local_date AS localDate FROM journal_entries
@@ -176,15 +172,12 @@ export class JournalDatabase implements Journal {
       for (const localDate of new Set(rows.map((row) => row.localDate))) {
         this.#markNoteDirty(localDate);
       }
-      recorded.push(
-        ...rows.map((row) => ({
-          id: row.id,
-          localDate: row.localDate,
-          state: "interrupted" as const,
-        })),
-      );
+      return rows.map((row) => ({
+        id: row.id,
+        localDate: row.localDate,
+        state: "interrupted" as const,
+      }));
     });
-    return recorded;
   }
 
   listDirtyDates(): readonly DirtyJournalDate[] {
@@ -363,11 +356,12 @@ export class JournalDatabase implements Journal {
     };
   }
 
-  #transaction(action: () => void): void {
+  #transaction<Result>(action: () => Result): Result {
     this.#database.exec("BEGIN IMMEDIATE");
     try {
-      action();
+      const result = action();
       this.#database.exec("COMMIT");
+      return result;
     } catch (error) {
       if (this.#database.isTransaction) this.#database.exec("ROLLBACK");
       throw error;
@@ -385,10 +379,8 @@ export class JournalDatabase implements Journal {
 }
 
 /** Open the private journal database, creating and migrating it when necessary. */
-export async function openJournalDatabase(
-  options: OpenJournalOptions = {},
-): Promise<JournalDatabase> {
-  const paths = resolveJournalPaths(options.agentDirectory);
+export async function openJournalDatabase(agentDirectory?: string): Promise<JournalDatabase> {
+  const paths = resolveJournalPaths(agentDirectory);
   secureDirectory(paths.journalDirectory);
   secureDirectory(paths.notesDirectory);
 

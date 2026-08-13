@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe("journal extension", () => {
   it("records lifecycle facts and regenerates the daily note", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     const handlers = new Map<string, Handler>();
     const pi = {
       registerTool: vi.fn(),
@@ -71,7 +71,7 @@ describe("journal extension", () => {
   });
 
   it("exposes ranked journal search through the agent tool", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     journal.beginEntry({
       piSessionId: "session-1",
       userEntryId: "user-1",
@@ -146,7 +146,7 @@ describe("journal extension", () => {
   });
 
   it("controls recording by project and session through one command", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     const session = SessionManager.inMemory("/work/project");
     const handlers = new Map<string, Handler>();
     let command: Omit<RegisteredCommand, "name" | "sourceInfo"> | undefined;

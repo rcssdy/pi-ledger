@@ -15,7 +15,7 @@ afterEach(() => {
 describe("journal database", () => {
   it("records, aggregates, renders, and reopens journal facts", async () => {
     const agentDirectory = temporaryDirectory();
-    const journal = await openJournalDatabase({ agentDirectory });
+    const journal = await openJournalDatabase(agentDirectory);
     if (process.platform !== "win32") {
       expect(statSync(journal.paths.journalDirectory).mode & 0o777).toBe(0o700);
       expect(statSync(journal.paths.databasePath).mode & 0o777).toBe(0o600);
@@ -88,7 +88,7 @@ describe("journal database", () => {
 
     journal.close();
     journal.close();
-    const reopened = await openJournalDatabase({ agentDirectory });
+    const reopened = await openJournalDatabase(agentDirectory);
     expect(reopened.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 2 }]);
     reopened.markNoteClean("2026-08-12", 2);
     expect(reopened.listDirtyDates()).toEqual([]);
@@ -98,7 +98,7 @@ describe("journal database", () => {
   });
 
   it("provides ranked full-text search with metadata filters", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     record(journal, entry("Add webhook retries"));
     record(
       journal,
@@ -142,7 +142,7 @@ describe("journal database", () => {
   });
 
   it("ranks related requests across sessions by shared topic terms", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     record(journal, entry("Investigate intermittent Stripe webhook timeout failures"));
     record(journal, {
       ...entry("Diagnose Stripe webhook timeout failures"),
@@ -173,7 +173,7 @@ describe("journal database", () => {
   });
 
   it("persists project recording exclusions", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     expect(journal.isProjectExcluded("/work/project")).toBe(false);
     journal.setProjectExcluded("/work/project", true);
     expect(journal.isProjectExcluded("/work/project")).toBe(true);
@@ -183,7 +183,7 @@ describe("journal database", () => {
   });
 
   it("marks every remaining pending entry interrupted", async () => {
-    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    const journal = await openJournalDatabase(temporaryDirectory());
     journal.beginEntry(entry("First pending"));
     journal.beginEntry({ ...entry("Second pending"), userEntryId: "user-2" });
 

@@ -7,10 +7,6 @@ export interface JournalPaths {
   notesDirectory: string;
 }
 
-export interface OpenJournalOptions {
-  agentDirectory?: string;
-}
-
 export interface BeginJournalEntry {
   piSessionId: string;
   userEntryId: string;
