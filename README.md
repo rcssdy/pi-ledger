@@ -22,6 +22,17 @@ The journal is built from recorded session facts. pi-ledger does not call a mode
 pi install npm:pi-ledger
 ```
 
+## Features
+
+Pi sessions preserve complete conversations. pi-ledger turns them into a work history you can scan, search, and keep outside the chat interface.
+
+- **A daily work log:** see what you asked Pi to do across projects and when you worked on it.
+- **A way back to earlier work:** find a past request, then open its original session for the full context.
+- **A usage record:** review which models and tools ran, where failures occurred, and how many tokens and dollars were spent.
+- **A durable local artifact:** keep readable Markdown notes backed by a rebuildable SQLite database, without sending journal content anywhere.
+
+Use it as a personal engineering journal, a project activity trail, or a factual record of AI-assisted work.
+
 ## How it works
 
 pi-ledger runs quietly in the background and records:
@@ -111,6 +122,16 @@ pi-ledger records by default. One `/ledger` command shows its status, controls r
 Session settings are the most specific and survive reloads and resumes. Project settings use the session's exact working directory and persist across sessions. When recording is disabled, a small `ledger off` footer status remains visible; search and note rebuilding continue to work.
 
 `/ledger rebuild` is normally unnecessary. Use it after deleting a note, after fixing a note-writing problem, or whenever the Markdown output no longer matches the database.
+
+## Roadmap
+
+Planned improvements include:
+
+- importing existing Pi sessions into the journal
+- minimal aggregate stats for costs, models, and tools
+- a quick way to open the journal notes
+
+These additions will preserve pi-ledger's current boundary: recorded session facts, local storage, and no model-generated summaries or copied response bodies.
 
 ## Data and privacy
 
