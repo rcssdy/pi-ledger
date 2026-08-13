@@ -5,7 +5,13 @@ import { pathToFileURL } from "node:url";
 
 import { isLocalDate } from "./local-time.js";
 import { singleLine, truncateCodePoints } from "./text.js";
-import type { DailyJournalEntry, DirtyJournalDate } from "./types.js";
+import type {
+  DailyJournalEntry,
+  DirtyJournalDate,
+  ModelFacts,
+  TokenFacts,
+  ToolFacts,
+} from "./types.js";
 
 const LOCK_STALE_MILLISECONDS = 30_000;
 
@@ -77,50 +83,95 @@ export function renderDailyNote(localDate: string, entries: readonly DailyJourna
     const title =
       (nameCounts.get(project.name) ?? 0) > 1 ? `${project.name} — ${project.cwd}` : project.name;
     sections.push(`## ${escapeMarkdown(title)}`);
-    for (const entry of groups.get(project.cwd) ?? []) sections.push(renderEntry(entry));
+    const sessions = new Map<string, DailyJournalEntry[]>();
+    for (const entry of groups.get(project.cwd) ?? []) {
+      const session = sessions.get(entry.piSessionId);
+      if (session === undefined) sessions.set(entry.piSessionId, [entry]);
+      else session.push(entry);
+    }
+    for (const session of sessions.values()) sections.push(renderSession(session));
   }
   return `${sections.join("\n\n")}\n`;
 }
 
-function renderEntry(entry: DailyJournalEntry): string {
-  const request = singleLine(entry.request);
+function renderSession(entries: readonly DailyJournalEntry[]): string {
+  const first = entries[0];
+  if (first === undefined) return "";
+  const last = entries.at(-1) ?? first;
+  const request = singleLine(first.request);
   const title = truncateCodePoints(request, 100) || "Untitled entry";
-  const lines = [`### ${entry.localTime} — ${escapeMarkdown(title)}`];
-  if (request !== title)
-    lines.push(`**Request:** ${escapeMarkdown(truncateCodePoints(request, 500))}`);
-  lines.push(sessionReference(entry));
+  const time =
+    first.localTime === last.localTime ? first.localTime : `${first.localTime}–${last.localTime}`;
+  const lines = [`### ${time} — ${escapeMarkdown(title)}`, sessionReference(first)];
 
-  if (entry.models.length > 0) {
+  lines.push(
+    [
+      `**Requests:** ${entries.length}`,
+      ...entries.map((entry) => {
+        const text = truncateCodePoints(singleLine(entry.request), 500) || "Untitled request";
+        return `- **${entry.localTime}** — ${escapeMarkdown(text)}`;
+      }),
+    ].join("\n"),
+  );
+
+  const models = new Map<string, ModelFacts>();
+  const tools = new Map<string, ToolFacts>();
+  for (const entry of entries) {
+    for (const model of entry.models) {
+      const key = `${model.provider}\0${model.model}`;
+      const total = models.get(key);
+      if (total === undefined) models.set(key, { ...model });
+      else {
+        total.responses += model.responses;
+        addTokens(total, model);
+        total.totalCost += model.totalCost;
+      }
+    }
+    for (const tool of entry.tools) {
+      const total = tools.get(tool.name);
+      if (total === undefined) tools.set(tool.name, { ...tool });
+      else {
+        total.executions += tool.executions;
+        total.failures += tool.failures;
+        addTokens(total, tool);
+        total.totalCost += tool.totalCost;
+      }
+    }
+  }
+  const modelFacts = [...models.values()];
+  const toolFacts = [...tools.values()];
+
+  if (modelFacts.length > 0) {
     lines.push(
-      `**Models:** ${entry.models.map((model) => code(`${model.provider}/${model.model}`)).join(", ")}`,
+      `**Models:** ${modelFacts.map((model) => code(`${model.provider}/${model.model}`)).join(", ")}`,
     );
   }
 
-  const modelTokens = entry.models.reduce((sum, model) => sum + model.totalTokens, 0);
-  const modelCost = entry.models.reduce((sum, model) => sum + model.totalCost, 0);
-  const toolTokens = entry.tools.reduce((sum, tool) => sum + tool.totalTokens, 0);
-  const toolCost = entry.tools.reduce((sum, tool) => sum + tool.totalCost, 0);
-  if (entry.models.length > 0 || toolTokens > 0 || toolCost > 0) {
-    const breakdown = entry.models.map(
+  const usage = aggregateTokens([...modelFacts, ...toolFacts]);
+  const modelCost = modelFacts.reduce((sum, model) => sum + model.totalCost, 0);
+  const toolTokens = toolFacts.reduce((sum, tool) => sum + tool.totalTokens, 0);
+  const toolCost = toolFacts.reduce((sum, tool) => sum + tool.totalCost, 0);
+  if (modelFacts.length > 0 || toolTokens > 0 || toolCost > 0) {
+    const breakdown = modelFacts.map(
       (model) =>
-        `- ${code(`${model.provider}/${model.model}`)}: ${formatTokens(model.totalTokens)} · ${formatCost(model.totalCost)} · ${model.responses} ${pluralize("response", model.responses)}`,
+        `- ${code(`${model.provider}/${model.model}`)}: ${formatTokenFacts(model)} · ${formatCost(model.totalCost)} · ${model.responses} ${pluralize("response", model.responses)}`,
     );
     if (toolTokens > 0 || toolCost > 0) {
       breakdown.push(
-        `- Tool-reported usage: ${formatTokens(toolTokens)} · ${formatCost(toolCost)}`,
+        `- Tool-reported usage: ${formatTokenFacts(aggregateTokens(toolFacts))} · ${formatCost(toolCost)}`,
       );
     }
     lines.push(
       [
-        `**Usage:** ${formatTokens(modelTokens + toolTokens)} · ${formatCost(modelCost + toolCost)}`,
+        `**Usage:** ${formatTokenFacts(usage)} · ${formatCost(modelCost + toolCost)}`,
         ...breakdown,
       ].join("\n"),
     );
   }
 
-  if (entry.tools.length > 0) {
+  if (toolFacts.length > 0) {
     lines.push(
-      `**Tools:** ${entry.tools
+      `**Tools:** ${toolFacts
         .map((tool) => {
           const failures = tool.failures > 0 ? `, ${tool.failures} failed` : "";
           return `${code(tool.name)} ×${tool.executions}${failures}`;
@@ -128,12 +179,46 @@ function renderEntry(entry: DailyJournalEntry): string {
         .join(" · ")}`,
     );
   }
-  if (entry.state === "interrupted") lines.push("**State:** interrupted");
+  const interruptions = entries.filter((entry) => entry.state === "interrupted").length;
+  if (interruptions > 0)
+    lines.push(`**State:** ${interruptions} interrupted ${pluralize("request", interruptions)}`);
   return lines.join("\n\n");
 }
 
+function aggregateTokens(facts: readonly TokenFacts[]): TokenFacts {
+  const total: TokenFacts = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+  };
+  for (const fact of facts) addTokens(total, fact);
+  return total;
+}
+
+function addTokens(total: TokenFacts, fact: TokenFacts): void {
+  total.inputTokens += fact.inputTokens;
+  total.outputTokens += fact.outputTokens;
+  total.cacheReadTokens += fact.cacheReadTokens;
+  total.cacheWriteTokens += fact.cacheWriteTokens;
+  total.totalTokens += fact.totalTokens;
+}
+
+function formatTokenFacts(facts: TokenFacts): string {
+  const breakdown = [
+    ["input", facts.inputTokens],
+    ["output", facts.outputTokens],
+    ["cache read", facts.cacheReadTokens],
+    ["cache write", facts.cacheWriteTokens],
+  ] as const;
+  return `${formatTokens(facts.totalTokens)} (${breakdown
+    .map(([label, tokens]) => `${label} ${formatNumber(tokens)}`)
+    .join(" · ")})`;
+}
+
 function sessionReference(entry: DailyJournalEntry): string {
-  const identity = `Session ${code(entry.piSessionId)} · entry ${code(entry.userEntryId)}`;
+  const identity = `Session ${code(entry.piSessionId)}`;
   if (entry.sessionFile === undefined) return `**Transcript:** ${identity} (ephemeral session)`;
   return `**Transcript:** [Open Pi session](<${pathToFileURL(entry.sessionFile).href}>) · ${identity}`;
 }
@@ -143,7 +228,11 @@ function pluralize(unit: string, count: number): string {
 }
 
 function formatTokens(tokens: number): string {
-  return `${new Intl.NumberFormat("en-US").format(tokens)} tokens`;
+  return `${formatNumber(tokens)} tokens`;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function formatCost(cost: number): string {

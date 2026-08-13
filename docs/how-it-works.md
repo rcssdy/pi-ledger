@@ -5,6 +5,7 @@ pi-ledger records facts about work that you ask Pi to do. It does not store assi
 This guide uses these terms:
 
 - A **journal entry** is one recorded user request and its usage facts.
+- A **daily session record** groups the journal entries from one Pi session on one local date.
 - The **journal database** is the SQLite file that stores all journal data.
 - A **daily note** is a Markdown file that pi-ledger creates from the database.
 
@@ -71,14 +72,14 @@ Disabling recording does not disable search or note rebuilding.
 
 The database is at `~/.pi/agent/ledger/ledger.sqlite` by default. If Pi uses a custom agent directory, pi-ledger uses that directory.
 
-| Data               | Purpose                                                                    |
-| ------------------ | -------------------------------------------------------------------------- |
-| Journal entries    | Store requests, times, project paths, session links, and entry states.     |
-| Model facts        | Store response counts, token usage, and costs for each provider and model. |
-| Tool facts         | Store execution counts, failures, token usage, and costs for each tool.    |
-| Full-text index    | Search recorded request text.                                              |
-| Dirty dates        | Track daily notes that need regeneration.                                  |
-| Project exclusions | Store projects for which recording is off.                                 |
+| Data               | Purpose                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| Journal entries    | Store requests, times, project paths, session links, and entry states.       |
+| Model facts        | Store response counts, input/output/cache/total tokens, and costs per model. |
+| Tool facts         | Store executions, failures, input/output/cache/total tokens, and costs.      |
+| Full-text index    | Search recorded request text.                                                |
+| Dirty dates        | Track daily notes that need regeneration.                                    |
+| Project exclusions | Store projects for which recording is off.                                   |
 
 The database uses foreign keys and write-ahead logging. Schema migrations run in transactions. pi-ledger rejects a database with a schema version that is newer than the version it supports.
 
@@ -86,7 +87,7 @@ The database uses foreign keys and write-ahead logging. Schema migrations run in
 
 Daily notes are at `~/.pi/agent/ledger/notes/YYYY-MM-DD.md` by default. Set `PI_LEDGER_NOTES_DIR` to an absolute or home-relative path to use another directory. This does not move the database or existing notes. Restart Pi and run `/ledger rebuild` after changing it.
 
-When an entry changes, pi-ledger increases the revision for its local date. The note writer reads the current revision and writes a complete note for that date. It clears the dirty state only if the revision did not change during the write.
+When an entry changes, pi-ledger increases the revision for its local date. The note writer groups that date's entries by project and Pi session, then writes one session record with its requests and combined model, tool, usage, and cost facts. A session that spans multiple local dates therefore appears once on each relevant daily note. The writer clears the dirty state only if the revision did not change during the write.
 
 The writer uses a lock file to prevent two processes from writing the same note at the same time. It writes to a temporary file and then renames that file. This operation prevents a partial note from replacing a valid note.
 

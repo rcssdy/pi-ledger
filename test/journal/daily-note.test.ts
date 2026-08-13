@@ -36,6 +36,10 @@ describe("daily note writer", () => {
                 provider: "openai",
                 model: "gpt-5.6-sol",
                 responses: 4,
+                inputTokens: 10_000,
+                outputTokens: 1_420,
+                cacheReadTokens: 50_000,
+                cacheWriteTokens: 10_000,
                 totalTokens: 71_420,
                 totalCost: 1.61,
               },
@@ -43,6 +47,10 @@ describe("daily note writer", () => {
                 provider: "anthropic",
                 model: "claude-sonnet-4-6",
                 responses: 1,
+                inputTokens: 1_000,
+                outputTokens: 71,
+                cacheReadTokens: 10_000,
+                cacheWriteTokens: 0,
                 totalTokens: 11_071,
                 totalCost: 0.11,
               },
@@ -52,6 +60,10 @@ describe("daily note writer", () => {
                 name: "read",
                 executions: 8,
                 failures: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
                 totalTokens: 0,
                 totalCost: 0,
               },
@@ -59,6 +71,10 @@ describe("daily note writer", () => {
                 name: "edit",
                 executions: 3,
                 failures: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
                 totalTokens: 0,
                 totalCost: 0,
               },
@@ -66,6 +82,47 @@ describe("daily note writer", () => {
                 name: "bash",
                 executions: 5,
                 failures: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+                totalTokens: 0,
+                totalCost: 0,
+              },
+            ],
+          },
+          {
+            id: 2,
+            piSessionId: "019f…",
+            userEntryId: "def456",
+            sessionFile: "/home/me/.pi/agent/sessions/project/session.jsonl",
+            cwd: "/work/pi-ledger",
+            request: "Run the focused tests",
+            state: "settled",
+            startedAt: "2026-08-12T14:45:00.000Z",
+            localTime: "14:45",
+            models: [
+              {
+                provider: "openai",
+                model: "gpt-5.6-sol",
+                responses: 2,
+                inputTokens: 1_000,
+                outputTokens: 80,
+                cacheReadTokens: 7_500,
+                cacheWriteTokens: 0,
+                totalTokens: 8_580,
+                totalCost: 0.19,
+              },
+            ],
+            tools: [
+              {
+                name: "read",
+                executions: 2,
+                failures: 1,
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
                 totalTokens: 0,
                 totalCost: 0,
               },
@@ -83,17 +140,21 @@ describe("daily note writer", () => {
 
 ## pi-ledger
 
-### 14:32 — Add timezone-aware journal timestamps and tests
+### 14:32–14:45 — Add timezone-aware journal timestamps and tests
 
-**Transcript:** [Open Pi session](<file:///home/me/.pi/agent/sessions/project/session.jsonl>) · Session \`019f…\` · entry \`abc123\`
+**Transcript:** [Open Pi session](<file:///home/me/.pi/agent/sessions/project/session.jsonl>) · Session \`019f…\`
+
+**Requests:** 2
+- **14:32** — Add timezone-aware journal timestamps and tests
+- **14:45** — Run the focused tests
 
 **Models:** \`openai/gpt-5.6-sol\`, \`anthropic/claude-sonnet-4-6\`
 
-**Usage:** 82,491 tokens · $1.72
-- \`openai/gpt-5.6-sol\`: 71,420 tokens · $1.61 · 4 responses
-- \`anthropic/claude-sonnet-4-6\`: 11,071 tokens · $0.11 · 1 response
+**Usage:** 91,071 tokens (input 12,000 · output 1,571 · cache read 67,500 · cache write 10,000) · $1.91
+- \`openai/gpt-5.6-sol\`: 80,000 tokens (input 11,000 · output 1,500 · cache read 57,500 · cache write 10,000) · $1.8 · 6 responses
+- \`anthropic/claude-sonnet-4-6\`: 11,071 tokens (input 1,000 · output 71 · cache read 10,000 · cache write 0) · $0.11 · 1 response
 
-**Tools:** \`read\` ×8 · \`edit\` ×3 · \`bash\` ×5
+**Tools:** \`read\` ×10, 1 failed · \`edit\` ×3 · \`bash\` ×5
 `);
   });
 

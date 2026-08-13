@@ -147,10 +147,18 @@ function collectModels(entries: readonly SessionEntry[]): ModelFacts[] {
       provider: message.provider,
       model: message.model,
       responses: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       totalTokens: 0,
       totalCost: 0,
     };
     current.responses += 1;
+    current.inputTokens = (current.inputTokens ?? 0) + message.usage.input;
+    current.outputTokens = (current.outputTokens ?? 0) + message.usage.output;
+    current.cacheReadTokens = (current.cacheReadTokens ?? 0) + message.usage.cacheRead;
+    current.cacheWriteTokens = (current.cacheWriteTokens ?? 0) + message.usage.cacheWrite;
     current.totalTokens += message.usage.totalTokens;
     current.totalCost += message.usage.cost.total;
     models.set(key, current);
@@ -167,11 +175,19 @@ function collectTools(entries: readonly SessionEntry[]): ToolFacts[] {
       name: message.toolName,
       executions: 0,
       failures: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       totalTokens: 0,
       totalCost: 0,
     };
     current.executions += 1;
     current.failures += message.isError ? 1 : 0;
+    current.inputTokens = (current.inputTokens ?? 0) + (message.usage?.input ?? 0);
+    current.outputTokens = (current.outputTokens ?? 0) + (message.usage?.output ?? 0);
+    current.cacheReadTokens = (current.cacheReadTokens ?? 0) + (message.usage?.cacheRead ?? 0);
+    current.cacheWriteTokens = (current.cacheWriteTokens ?? 0) + (message.usage?.cacheWrite ?? 0);
     current.totalTokens += message.usage?.totalTokens ?? 0;
     current.totalCost += message.usage?.cost.total ?? 0;
     tools.set(message.toolName, current);

@@ -85,7 +85,19 @@ describe("journal extension", () => {
       piSessionId: "session-1",
       userEntryId: "user-1",
       settledAt: "2026-08-12T12:01:00.000Z",
-      models: [],
+      models: [
+        {
+          provider: "openai",
+          model: "gpt-test",
+          responses: 1,
+          inputTokens: 4,
+          outputTokens: 2,
+          cacheReadTokens: 3,
+          cacheWriteTokens: 1,
+          totalTokens: 10,
+          totalCost: 0.1,
+        },
+      ],
       tools: [],
     });
     const tools = new Map<string, ToolDefinition>();
@@ -107,6 +119,9 @@ describe("journal extension", () => {
         text: expect.stringContaining("Add webhook retries"),
       }),
     ]);
+    expect(result.content[0]).toEqual(
+      expect.objectContaining({ text: expect.stringContaining("input 4 · output 2") }),
+    );
     journal.close();
   });
 

@@ -25,19 +25,25 @@ export interface DirtyJournalDate {
   revision: number;
 }
 
-export interface ModelFacts {
+export interface TokenFacts {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+}
+
+export interface ModelFacts extends TokenFacts {
   provider: string;
   model: string;
   responses: number;
-  totalTokens: number;
   totalCost: number;
 }
 
-export interface ToolFacts {
+export interface ToolFacts extends TokenFacts {
   name: string;
   executions: number;
   failures: number;
-  totalTokens: number;
   totalCost: number;
 }
 

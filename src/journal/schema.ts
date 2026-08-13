@@ -30,6 +30,10 @@ CREATE TABLE entry_models (
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   responses INTEGER NOT NULL CHECK (responses > 0),
+  input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+  output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_write_tokens >= 0),
   total_tokens INTEGER NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0,
   PRIMARY KEY (entry_id, provider, model)
@@ -41,6 +45,10 @@ CREATE TABLE entry_tools (
   name TEXT NOT NULL,
   executions INTEGER NOT NULL CHECK (executions > 0),
   failures INTEGER NOT NULL DEFAULT 0 CHECK (failures BETWEEN 0 AND executions),
+  input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+  output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_read_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0 CHECK (cache_write_tokens >= 0),
   total_tokens INTEGER NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0,
   PRIMARY KEY (entry_id, name)
@@ -65,6 +73,15 @@ CREATE TRIGGER journal_entries_fts_delete AFTER DELETE ON journal_entries BEGIN
   INSERT INTO journal_entries_fts(journal_entries_fts, rowid, request)
   VALUES ('delete', old.id, old.request);
 END;
+
+CREATE TABLE dirty_note_dates (
+  local_date TEXT PRIMARY KEY,
+  revision INTEGER NOT NULL CHECK (revision > 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE excluded_projects (
+  cwd TEXT PRIMARY KEY
+) STRICT, WITHOUT ROWID;
 `;
 
 export const migrations: readonly Migration[] = [
@@ -72,29 +89,6 @@ export const migrations: readonly Migration[] = [
     version: 1,
     migrate(database) {
       database.exec(SCHEMA);
-    },
-  },
-  {
-    version: 2,
-    migrate(database) {
-      database.exec(`
-        CREATE TABLE dirty_note_dates (
-          local_date TEXT PRIMARY KEY,
-          revision INTEGER NOT NULL CHECK (revision > 0)
-        ) STRICT, WITHOUT ROWID;
-        INSERT INTO dirty_note_dates (local_date, revision)
-          SELECT DISTINCT local_date, 1 FROM journal_entries WHERE state != 'pending';
-      `);
-    },
-  },
-  {
-    version: 3,
-    migrate(database) {
-      database.exec(`
-        CREATE TABLE excluded_projects (
-          cwd TEXT PRIMARY KEY
-        ) STRICT, WITHOUT ROWID;
-      `);
     },
   },
 ];

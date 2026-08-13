@@ -43,11 +43,17 @@ export class JournalDatabase implements Journal {
     this.#database = database;
     this.paths = paths;
     this.#models = database.prepare(`
-      SELECT provider, model, responses, total_tokens AS totalTokens, total_cost AS totalCost
+      SELECT provider, model, responses,
+        input_tokens AS inputTokens, output_tokens AS outputTokens,
+        cache_read_tokens AS cacheReadTokens, cache_write_tokens AS cacheWriteTokens,
+        total_tokens AS totalTokens, total_cost AS totalCost
       FROM entry_models WHERE entry_id = ? ORDER BY provider, model
     `);
     this.#tools = database.prepare(`
-      SELECT name, executions, failures, total_tokens AS totalTokens, total_cost AS totalCost
+      SELECT name, executions, failures,
+        input_tokens AS inputTokens, output_tokens AS outputTokens,
+        cache_read_tokens AS cacheReadTokens, cache_write_tokens AS cacheWriteTokens,
+        total_tokens AS totalTokens, total_cost AS totalCost
       FROM entry_tools WHERE entry_id = ? ORDER BY name
     `);
   }
@@ -121,8 +127,9 @@ export class JournalDatabase implements Journal {
 
       const insertModel = this.#database.prepare(`
         INSERT INTO entry_models (
-          entry_id, provider, model, responses, total_tokens, total_cost
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          entry_id, provider, model, responses, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, total_cost
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const model of input.models) {
         insertModel.run(
@@ -130,6 +137,10 @@ export class JournalDatabase implements Journal {
           model.provider,
           model.model,
           model.responses,
+          model.inputTokens,
+          model.outputTokens,
+          model.cacheReadTokens,
+          model.cacheWriteTokens,
           model.totalTokens,
           model.totalCost,
         );
@@ -137,8 +148,9 @@ export class JournalDatabase implements Journal {
 
       const insertTool = this.#database.prepare(`
         INSERT INTO entry_tools (
-          entry_id, name, executions, failures, total_tokens, total_cost
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          entry_id, name, executions, failures, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_tokens, total_cost
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const tool of input.tools) {
         insertTool.run(
@@ -146,6 +158,10 @@ export class JournalDatabase implements Journal {
           tool.name,
           tool.executions,
           tool.failures,
+          tool.inputTokens,
+          tool.outputTokens,
+          tool.cacheReadTokens,
+          tool.cacheWriteTokens,
           tool.totalTokens,
           tool.totalCost,
         );

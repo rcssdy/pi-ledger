@@ -297,11 +297,18 @@ function formatSearchResults(
   return results
     .map((result) => {
       const models = truncateCodePoints(
-        result.models.map((model) => `${model.provider}/${model.model}`).join(", "),
+        result.models
+          .map((model) => `${model.provider}/${model.model}: ${formatTokenFacts(model)}`)
+          .join(", "),
         500,
       );
       const tools = truncateCodePoints(
-        result.tools.map((tool) => `${tool.name} ×${tool.executions}`).join(", "),
+        result.tools
+          .map(
+            (tool) =>
+              `${tool.name} ×${tool.executions}${tool.totalTokens > 0 ? `: ${formatTokenFacts(tool)}` : ""}`,
+          )
+          .join(", "),
         500,
       );
       const transcript = truncateCodePoints(
@@ -323,6 +330,17 @@ function formatSearchResults(
         .join("\n");
     })
     .join("\n\n");
+}
+
+function formatTokenFacts(facts: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+}): string {
+  const number = new Intl.NumberFormat("en-US");
+  return `${number.format(facts.totalTokens)} tokens (input ${number.format(facts.inputTokens)} · output ${number.format(facts.outputTokens)} · cache read ${number.format(facts.cacheReadTokens)} · cache write ${number.format(facts.cacheWriteTokens)})`;
 }
 
 function sessionRecordingOverride(ctx: ExtensionContext): boolean | undefined {

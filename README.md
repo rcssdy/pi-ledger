@@ -12,7 +12,7 @@
 
 _A daily record of what you asked Pi to work on._
 
-`pi-ledger` creates a local Markdown journal from your Pi sessions. It records each request, when and where it was made, which models and tools were used, and the usage and cost reported by Pi. Every entry links back to the original session for the full conversation.
+`pi-ledger` creates a local Markdown journal from your Pi sessions. Each daily record represents one session, lists its requests, and summarizes the models, tools, usage, and cost reported by Pi. Every record links back to the original session for the full conversation.
 
 The journal is built from recorded session facts. pi-ledger does not call a model to write summaries, guess whether work was completed, or copy conversations into its database.
 
@@ -26,7 +26,7 @@ pi install npm:pi-ledger
 
 Pi sessions preserve complete conversations. pi-ledger turns them into a work history you can scan, search, and keep outside the chat interface.
 
-- **A daily work log:** see what you asked Pi to do across projects and when you worked on it.
+- **A daily work log:** see each Pi session, what you asked it to do, and when you worked on it across projects.
 - **A way back to earlier work:** find a past request, then open its original session for the full context.
 - **A usage record:** review which models and tools ran, where failures occurred, and how many tokens and dollars were spent.
 - **A durable local artifact:** keep readable Markdown notes backed by a rebuildable SQLite database, without sending journal content anywhere.
@@ -35,13 +35,14 @@ Use it as a personal engineering journal, a project activity trail, or a factual
 
 ## How it works
 
-pi-ledger runs quietly in the background and records:
+pi-ledger runs quietly in the background. It records each request and renders one journal record per session for each day, including:
 
 - the request and its local time
 - the working directory
 - the Pi session and initiating user-entry IDs
 - the providers and models used
-- token usage and cost reported by Pi
+- input, output, cache-read, cache-write, and total tokens reported by Pi
+- cost reported by Pi
 - tool executions and failures
 
 The original Pi session remains the full transcript. The journal database contains only the facts needed to render and search journal entries.
@@ -65,21 +66,26 @@ For example:
 
 ## pi-ledger
 
-### 14:32 — Add timezone-aware journal timestamps and tests
+### 14:32–14:45 — Add timezone-aware journal timestamps and tests
 
-**Transcript:** [Open Pi session](file:///home/me/.pi/agent/sessions/project/session.jsonl) · Session `019f…` · entry `abc123`
+**Transcript:** [Open Pi session](file:///home/me/.pi/agent/sessions/project/session.jsonl) · Session `019f…`
+
+**Requests:** 2
+
+- **14:32** — Add timezone-aware journal timestamps and tests
+- **14:45** — Run the focused tests
 
 **Models:** `openai/gpt-5.6-sol`, `anthropic/claude-sonnet-4-6`
 
-**Usage:** 82,491 tokens · $1.72
+**Usage:** 91,071 tokens (input 12,000 · output 1,571 · cache read 67,500 · cache write 10,000) · $1.91
 
-- `openai/gpt-5.6-sol`: 71,420 tokens · $1.61 · 4 responses
-- `anthropic/claude-sonnet-4-6`: 11,071 tokens · $0.11 · 1 response
+- `openai/gpt-5.6-sol`: 80,000 tokens (input 11,000 · output 1,500 · cache read 57,500 · cache write 10,000) · $1.80 · 6 responses
+- `anthropic/claude-sonnet-4-6`: 11,071 tokens (input 1,000 · output 71 · cache read 10,000 · cache write 0) · $0.11 · 1 response
 
-**Tools:** `read` ×8 · `edit` ×3 · `bash` ×5
+**Tools:** `read` ×10, 1 failed · `edit` ×3 · `bash` ×5
 ```
 
-Headings come from the request after Pi expands any skill or prompt-template invocation. Model, tool, usage, and cost details come from Pi's records. Ephemeral sessions have no file link, so their session and entry IDs are shown instead.
+The first request becomes the session heading. Requests remain separate in SQLite for search, while the daily note sums model, tool, usage, and cost facts across the session. A session resumed on another day gets a record on that day's note for the requests made that day. Ephemeral sessions have no file link, so their session ID is shown instead.
 
 Journal dates and times use the system's local timezone at the time the request is recorded. If Pi uses a custom agent directory, pi-ledger follows `PI_CODING_AGENT_DIR`.
 
@@ -100,7 +106,7 @@ The extension registers two agent tools. `journal_search` provides ranked full-t
 - provider/model
 - tool name
 
-Results include the matching request, Ledger entry ID, project path, model and tool facts, and a link to the native Pi session. Search tries to match every term first, then retries with any matching term when that finds nothing.
+Results include the matching request, Ledger entry ID, project path, per-model and tool-reported token breakdowns, and a link to the native Pi session. Search tries to match every term first, then retries with any matching term when that finds nothing.
 
 `journal_related` starts from a Ledger entry ID returned by search and finds other requests sharing its strongest topic terms. It ranks stronger overlaps first. It is local lexical search rather than semantic or model-generated similarity, so concrete project names, errors, symbols, and feature terms produce the best results.
 
