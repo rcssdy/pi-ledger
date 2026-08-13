@@ -1,9 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
-import registerPiLedger from "../src/index.js";
+import registerPiLedger, * as entrypoint from "../src/index.js";
 
 describe("pi-ledger extension", () => {
+  it("only exposes the extension entrypoint", () => {
+    expect(Object.keys(entrypoint)).toEqual(["default"]);
+  });
+
   it("loads without registering visible interface elements", () => {
     const calls = new Set<PropertyKey>();
     const pi = new Proxy(
