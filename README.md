@@ -8,9 +8,9 @@
 
 **[Install](#install)** · **[How it works](#how-it-works)** · **[Commands](#commands)**
 
-</div>
-
 _A daily record of what you asked Pi to work on._
+
+</div>
 
 `pi-ledger` creates a local Markdown journal from your Pi sessions. Each daily record represents one session, lists its requests, and summarizes the models, tools, usage, and cost reported by Pi. Every record links back to the original session for the full conversation.
 
