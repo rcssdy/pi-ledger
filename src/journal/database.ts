@@ -1,0 +1,355 @@
+import { chmodSync, mkdirSync } from "node:fs";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
+
+import { resolveJournalPaths } from "./paths.js";
+import { applyMigrations } from "./schema.js";
+import type {
+  BeginJournalEntry,
+  DailyJournalEntry,
+  Journal,
+  JournalPaths,
+  JournalSearchQuery,
+  JournalSearchResult,
+  ModelFacts,
+  OpenJournalOptions,
+  PendingJournalEntry,
+  RecordedJournalEntry,
+  SettleJournalEntry,
+  ToolFacts,
+} from "./types.js";
+
+interface EntryRow {
+  id: number;
+  piSessionId: string;
+  userEntryId: string;
+  sessionFile: string | null;
+  cwd: string;
+  request: string;
+  state: "settled" | "interrupted";
+  startedAt: string;
+  localDate: string;
+  localTime: string;
+}
+
+export class JournalDatabase implements Journal {
+  readonly paths: JournalPaths;
+  readonly #database: DatabaseSync;
+  readonly #models: StatementSync;
+  readonly #tools: StatementSync;
+  #closed = false;
+
+  constructor(database: DatabaseSync, paths: JournalPaths) {
+    this.#database = database;
+    this.paths = paths;
+    this.#models = database.prepare(`
+      SELECT provider, model, responses, total_tokens AS totalTokens, total_cost AS totalCost
+      FROM entry_models WHERE entry_id = ? ORDER BY provider, model
+    `);
+    this.#tools = database.prepare(`
+      SELECT name, executions, failures, total_tokens AS totalTokens, total_cost AS totalCost
+      FROM entry_tools WHERE entry_id = ? ORDER BY name
+    `);
+  }
+
+  beginEntry(input: BeginJournalEntry): void {
+    this.#database
+      .prepare(`
+        INSERT INTO journal_entries (
+          pi_session_id, user_entry_id, session_file, cwd, request,
+          started_at, state, local_date, local_time
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        ON CONFLICT (pi_session_id, user_entry_id) DO UPDATE SET
+          session_file = excluded.session_file,
+          cwd = excluded.cwd,
+          request = excluded.request,
+          local_date = excluded.local_date,
+          local_time = excluded.local_time
+      `)
+      .run(
+        input.piSessionId,
+        input.userEntryId,
+        input.sessionFile ?? null,
+        input.cwd,
+        input.request,
+        input.startedAt,
+        input.localDate,
+        input.localTime,
+      );
+  }
+
+  listPendingEntries(piSessionId: string): readonly PendingJournalEntry[] {
+    return this.#database
+      .prepare(`
+        SELECT
+          pi_session_id AS piSessionId,
+          user_entry_id AS userEntryId,
+          session_file AS sessionFile,
+          cwd,
+          request,
+          started_at AS startedAt,
+          local_date AS localDate,
+          local_time AS localTime
+        FROM journal_entries
+        WHERE pi_session_id = ? AND state = 'pending'
+        ORDER BY started_at, user_entry_id
+      `)
+      .all(piSessionId)
+      .map((value) => {
+        const row = value as unknown as PendingJournalEntry & { sessionFile: string | null };
+        return { ...row, sessionFile: row.sessionFile ?? undefined };
+      });
+  }
+
+  settleEntry(input: SettleJournalEntry): RecordedJournalEntry | undefined {
+    let recorded: RecordedJournalEntry | undefined;
+    this.#transaction(() => {
+      const row = this.#database
+        .prepare(`
+          SELECT id, local_date AS localDate
+          FROM journal_entries
+          WHERE pi_session_id = ? AND user_entry_id = ?
+        `)
+        .get(input.piSessionId, input.userEntryId) as { id: number; localDate: string } | undefined;
+      if (row === undefined) return;
+
+      const state = input.state ?? "settled";
+      this.#database
+        .prepare("UPDATE journal_entries SET settled_at = ?, state = ? WHERE id = ?")
+        .run(input.settledAt, state, row.id);
+      this.#database.prepare("DELETE FROM entry_models WHERE entry_id = ?").run(row.id);
+      this.#database.prepare("DELETE FROM entry_tools WHERE entry_id = ?").run(row.id);
+
+      const insertModel = this.#database.prepare(`
+        INSERT INTO entry_models (
+          entry_id, provider, model, responses, total_tokens, total_cost
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const model of input.models) {
+        insertModel.run(
+          row.id,
+          model.provider,
+          model.model,
+          model.responses,
+          model.totalTokens,
+          model.totalCost,
+        );
+      }
+
+      const insertTool = this.#database.prepare(`
+        INSERT INTO entry_tools (
+          entry_id, name, executions, failures, total_tokens, total_cost
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const tool of input.tools) {
+        insertTool.run(
+          row.id,
+          tool.name,
+          tool.executions,
+          tool.failures,
+          tool.totalTokens,
+          tool.totalCost,
+        );
+      }
+      recorded = { id: row.id, localDate: row.localDate, state };
+    });
+    return recorded;
+  }
+
+  interruptPendingEntries(piSessionId: string, settledAt: string): readonly RecordedJournalEntry[] {
+    const recorded: RecordedJournalEntry[] = [];
+    this.#transaction(() => {
+      const rows = this.#database
+        .prepare(`
+          SELECT id, local_date AS localDate FROM journal_entries
+          WHERE pi_session_id = ? AND state = 'pending'
+        `)
+        .all(piSessionId) as unknown as Array<{ id: number; localDate: string }>;
+      this.#database
+        .prepare(`
+          UPDATE journal_entries SET settled_at = ?, state = 'interrupted'
+          WHERE pi_session_id = ? AND state = 'pending'
+        `)
+        .run(settledAt, piSessionId);
+      recorded.push(
+        ...rows.map((row) => ({
+          id: row.id,
+          localDate: row.localDate,
+          state: "interrupted" as const,
+        })),
+      );
+    });
+    return recorded;
+  }
+
+  listDates(): readonly string[] {
+    const rows = this.#database
+      .prepare(`
+        SELECT DISTINCT local_date AS localDate FROM journal_entries
+        WHERE state != 'pending' ORDER BY local_date
+      `)
+      .all() as Array<{ localDate: string }>;
+    return rows.map((row) => row.localDate);
+  }
+
+  listDailyEntries(localDate: string): readonly DailyJournalEntry[] {
+    const rows = this.#database
+      .prepare(`
+        SELECT
+          id,
+          pi_session_id AS piSessionId,
+          user_entry_id AS userEntryId,
+          session_file AS sessionFile,
+          cwd,
+          request,
+          state,
+          started_at AS startedAt,
+          local_date AS localDate,
+          local_time AS localTime
+        FROM journal_entries
+        WHERE local_date = ? AND state != 'pending'
+        ORDER BY started_at, id
+      `)
+      .all(localDate) as unknown as EntryRow[];
+    return rows.map((row) => this.#hydrate(row));
+  }
+
+  search(query: JournalSearchQuery): readonly JournalSearchResult[] {
+    const match = toFtsQuery(query.query);
+    if (match === undefined) return [];
+    const limit = Math.min(Math.max(query.limit ?? 10, 1), 20);
+    const conditions = ["journal_entries_fts MATCH ?", "entry.state != 'pending'"];
+    const parameters: Array<string | number> = [match];
+
+    if (query.after !== undefined) {
+      conditions.push("entry.local_date >= ?");
+      parameters.push(query.after);
+    }
+    if (query.before !== undefined) {
+      conditions.push("entry.local_date <= ?");
+      parameters.push(query.before);
+    }
+    if (query.cwd !== undefined) {
+      conditions.push("entry.cwd LIKE ? ESCAPE '\\'");
+      parameters.push(`${escapeLike(query.cwd)}%`);
+    }
+    if (query.model !== undefined) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM entry_models model
+        WHERE model.entry_id = entry.id
+          AND (model.provider || '/' || model.model) LIKE ? ESCAPE '\\'
+      )`);
+      parameters.push(`%${escapeLike(query.model)}%`);
+    }
+    if (query.tool !== undefined) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM entry_tools tool
+        WHERE tool.entry_id = entry.id AND tool.name = ? COLLATE NOCASE
+      )`);
+      parameters.push(query.tool);
+    }
+    parameters.push(limit);
+
+    const rows = this.#database
+      .prepare(`
+        SELECT
+          entry.id,
+          entry.pi_session_id AS piSessionId,
+          entry.user_entry_id AS userEntryId,
+          entry.session_file AS sessionFile,
+          entry.cwd,
+          entry.request,
+          entry.state,
+          entry.started_at AS startedAt,
+          entry.local_date AS localDate,
+          entry.local_time AS localTime,
+          snippet(journal_entries_fts, 0, '«', '»', ' … ', 16) AS snippet,
+          bm25(journal_entries_fts) AS rank
+        FROM journal_entries_fts
+        JOIN journal_entries entry ON entry.id = journal_entries_fts.rowid
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY rank, entry.started_at DESC
+        LIMIT ?
+      `)
+      .all(...parameters) as unknown as Array<EntryRow & { snippet: string; rank: number }>;
+
+    return rows.map((row) => ({ ...this.#hydrate(row), snippet: row.snippet, rank: row.rank }));
+  }
+
+  close(): void {
+    if (this.#closed) return;
+    this.#database.close();
+    this.#closed = true;
+  }
+
+  #hydrate(row: EntryRow): DailyJournalEntry & { localDate: string } {
+    return {
+      id: row.id,
+      piSessionId: row.piSessionId,
+      userEntryId: row.userEntryId,
+      sessionFile: row.sessionFile ?? undefined,
+      cwd: row.cwd,
+      request: row.request,
+      state: row.state,
+      startedAt: row.startedAt,
+      localDate: row.localDate,
+      localTime: row.localTime,
+      models: this.#models.all(row.id) as unknown as ModelFacts[],
+      tools: this.#tools.all(row.id) as unknown as ToolFacts[],
+    };
+  }
+
+  #transaction(action: () => void): void {
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      action();
+      this.#database.exec("COMMIT");
+    } catch (error) {
+      if (this.#database.isTransaction) this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+}
+
+/** Open the private journal database, creating and migrating it when necessary. */
+export async function openJournalDatabase(
+  options: OpenJournalOptions = {},
+): Promise<JournalDatabase> {
+  const paths = resolveJournalPaths(options.agentDirectory);
+  secureDirectory(paths.journalDirectory);
+  secureDirectory(paths.notesDirectory);
+
+  const { DatabaseSync } = await import("node:sqlite");
+  const database = new DatabaseSync(paths.databasePath, { enableForeignKeyConstraints: true });
+  try {
+    if (process.platform !== "win32") chmodSync(paths.databasePath, 0o600);
+    database.exec(`
+      PRAGMA busy_timeout = 5000;
+      PRAGMA foreign_keys = ON;
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+    `);
+    applyMigrations(database);
+    return new JournalDatabase(database, paths);
+  } catch (error) {
+    database.close();
+    throw error;
+  }
+}
+
+function toFtsQuery(input: string): string | undefined {
+  const terms: string[] = [];
+  for (const match of input.matchAll(/"([^"]+)"|([\p{L}\p{N}_-]+)/gu)) {
+    const value = (match[1] ?? match[2])?.trim();
+    if (value) terms.push(`"${value.replaceAll('"', '""')}"`);
+  }
+  return terms.length === 0 ? undefined : terms.join(" AND ");
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function secureDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") chmodSync(path, 0o700);
+}

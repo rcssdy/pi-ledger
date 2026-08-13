@@ -1,8 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { registerLifecycleRecording } from "./lifecycle/pi-lifecycle.js";
+import { registerJournalExtension } from "./extension.js";
 
-/** Register the pi-ledger extension. */
 export default function registerPiLedger(pi: ExtensionAPI): void {
-  registerLifecycleRecording(pi);
+  registerJournalExtension(pi);
 }
