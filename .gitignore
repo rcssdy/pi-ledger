@@ -1,4 +1,5 @@
 node_modules/
 coverage/
+docs/research/
 *.tgz
 .DS_Store
