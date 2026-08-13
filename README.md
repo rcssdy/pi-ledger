@@ -2,7 +2,7 @@
 
 ### A local work journal for [Pi](https://pi.dev)
 
-**[Install](#install)** · **[How it works](#how-it-works)** · **[Journal](#journal)** · **[Search](#search)** · **[Commands](#commands)** · **[Data and privacy](#data-and-privacy)**
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Technical details](docs/how-it-works.md)** · **[Journal](#journal)** · **[Search](#search)** · **[Commands](#commands)** · **[Data and privacy](#data-and-privacy)**
 
 _A daily record of what you asked Pi to work on._
 
