@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Local SQLite recording of Pi requests, model usage, costs, and tool activity.
-- Deterministic Markdown daily notes linked to their original Pi sessions.
+- Local SQLite recording of Pi requests, per-model token breakdowns, costs, and tool activity.
+- Daily session records that group requests, aggregate mixed-model usage, and link to Pi transcripts.
 - Ranked full-text journal search with project, date, model, and tool filters.
 - Related-entry search based on distinctive request terms.
 - Session and project recording controls through `/ledger`.
