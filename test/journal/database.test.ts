@@ -136,12 +136,40 @@ describe("journal database", () => {
     expect(journal.search({ query: '"delivery scheduling"' })).toHaveLength(1);
     expect(journal.search({ query: "' OR 1=1 --" })).toEqual([]);
     expect(journal.search({ query: "webhook scheduling" })).toHaveLength(3);
-    expect(journal.related(1)).toEqual([
-      expect.objectContaining({ request: "Improve webhook retry diagnostics" }),
-    ]);
     expect(() => journal.search({ query: "delivery", after: "2026-99-99" })).toThrow(
       "Invalid local date",
     );
+    journal.close();
+  });
+
+  it("ranks related requests across sessions by shared topic terms", async () => {
+    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    record(journal, entry("Investigate intermittent Stripe webhook timeout failures"));
+    record(journal, {
+      ...entry("Diagnose Stripe webhook timeout failures"),
+      piSessionId: "session-2",
+      userEntryId: "user-2",
+      sessionFile: "/sessions/two.jsonl",
+    });
+    record(journal, {
+      ...entry("Trace intermittent Stripe retries"),
+      piSessionId: "session-3",
+      userEntryId: "user-3",
+      sessionFile: "/sessions/three.jsonl",
+    });
+    record(journal, {
+      ...entry("Update README navigation"),
+      piSessionId: "session-4",
+      userEntryId: "user-4",
+      sessionFile: "/sessions/four.jsonl",
+    });
+
+    const results = journal.related(1);
+
+    expect(results.map((result) => result.request)).toEqual([
+      "Diagnose Stripe webhook timeout failures",
+      "Trace intermittent Stripe retries",
+    ]);
     journal.close();
   });
 

@@ -83,7 +83,7 @@ The extension registers two agent tools. `journal_search` provides ranked full-t
 
 Results include the matching request, Ledger entry ID, project path, model and tool facts, and a link to the native Pi session. Search tries to match every term first, then retries with any matching term when that finds nothing.
 
-`journal_related` starts from a Ledger entry ID returned by search and finds other requests sharing its most distinctive terms. It is local lexical search rather than semantic or model-generated similarity, so concrete project names, errors, symbols, and feature terms produce the best results.
+`journal_related` starts from a Ledger entry ID returned by search and finds other requests sharing its strongest topic terms. It ranks stronger overlaps first. It is local lexical search rather than semantic or model-generated similarity, so concrete project names, errors, symbols, and feature terms produce the best results.
 
 Search is intentionally scoped to **what you asked Pi**. Response bodies are not copied into the index, so details mentioned only inside a conversation remain available through the linked transcript rather than journal search.
 

@@ -106,7 +106,7 @@ The search process is:
 
 The full-text index uses Unicode tokenization and Porter stemming. A search can therefore match common forms of the same English word.
 
-`journal_related` starts with one journal entry. It selects up to six frequent and distinctive words from that request. It ignores short and common words. It then uses the normal journal search and removes the source entry from the results.
+`journal_related` starts with one journal entry. It selects up to six frequent topic words from that request and ignores short and common words. It searches for entries containing any of those terms, excludes the source entry, and uses BM25 to rank stronger overlaps first.
 
 Related search is lexical. It finds shared words and word forms. It does not use embeddings or a model, so it does not always match different words that have the same meaning.
 

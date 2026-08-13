@@ -268,15 +268,22 @@ export class JournalDatabase implements Journal {
     const query = topTerms(row.request, 6);
     if (query === "") return [];
     const cappedLimit = Math.min(Math.max(limit, 1), 10);
-    return this.search({ query, limit: cappedLimit + 1 })
-      .filter((result) => result.id !== entryId)
-      .slice(0, cappedLimit);
+    return this.#search({ query, limit: cappedLimit }, toFtsTerms(query).join(" OR "), entryId);
   }
 
-  #search(query: JournalSearchQuery, match: string): readonly JournalSearchResult[] {
+  #search(
+    query: JournalSearchQuery,
+    match: string,
+    excludedEntryId?: number,
+  ): readonly JournalSearchResult[] {
     const limit = Math.min(Math.max(query.limit ?? 10, 1), 20);
     const conditions = ["journal_entries_fts MATCH ?", "entry.state != 'pending'"];
     const parameters: Array<string | number> = [match];
+
+    if (excludedEntryId !== undefined) {
+      conditions.push("entry.id != ?");
+      parameters.push(excludedEntryId);
+    }
 
     if (query.after !== undefined) {
       conditions.push("entry.local_date >= ?");
