@@ -72,6 +72,14 @@ Headings come from the request after Pi expands any skill or prompt-template inv
 
 Journal dates and times use the system's local timezone at the time the request is recorded. If Pi uses a custom agent directory, pi-ledger follows `PI_CODING_AGENT_DIR`.
 
+To write Markdown notes elsewhere, set `PI_LEDGER_NOTES_DIR` to an absolute or home-relative path before starting Pi:
+
+```bash
+export PI_LEDGER_NOTES_DIR="$HOME/Documents/Pi Ledger"
+```
+
+This setting changes only the derived Markdown notes. It does not move the SQLite database or existing notes. After changing it, restart Pi and run `/ledger rebuild` to create the notes in their new location.
+
 ## Search
 
 The extension registers two agent tools. `journal_search` provides ranked full-text search over recorded requests, with optional filters for:
@@ -92,7 +100,7 @@ Search is intentionally scoped to **what you asked Pi**. Response bodies are not
 pi-ledger records by default. One `/ledger` command shows its status, controls recording, and rebuilds the derived Markdown notes:
 
 ```text
-/ledger                    show recording status for the current directory
+/ledger                    show recording status and the notes directory
 /ledger off                stop recording this session
 /ledger on                 record this session, even if its project is disabled
 /ledger off project        disable recording for this project

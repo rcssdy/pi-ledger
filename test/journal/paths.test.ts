@@ -21,4 +21,17 @@ describe("journal paths", () => {
     vi.stubEnv("PI_CODING_AGENT_DIR", "~/pi-agent");
     expect(resolveJournalPaths().agentDirectory).toBe(join(homedir(), "pi-agent"));
   });
+
+  it("accepts absolute and home-relative notes directories", () => {
+    vi.stubEnv("PI_LEDGER_NOTES_DIR", "/work/notes");
+    expect(resolveJournalPaths().notesDirectory).toBe(resolve("/work/notes"));
+
+    vi.stubEnv("PI_LEDGER_NOTES_DIR", "~/pi-notes");
+    expect(resolveJournalPaths().notesDirectory).toBe(join(homedir(), "pi-notes"));
+
+    vi.stubEnv("PI_LEDGER_NOTES_DIR", "relative/notes");
+    expect(() => resolveJournalPaths()).toThrow(
+      "PI_LEDGER_NOTES_DIR must be an absolute path or start with ~",
+    );
+  });
 });

@@ -382,7 +382,6 @@ export class JournalDatabase implements Journal {
 export async function openJournalDatabase(agentDirectory?: string): Promise<JournalDatabase> {
   const paths = resolveJournalPaths(agentDirectory);
   secureDirectory(paths.journalDirectory);
-  secureDirectory(paths.notesDirectory);
 
   const { DatabaseSync } = await import("node:sqlite");
   const database = new DatabaseSync(paths.databasePath, { enableForeignKeyConstraints: true });

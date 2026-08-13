@@ -216,7 +216,7 @@ export function registerJournalExtension(
       }
       const state = recordingState(ctx);
       ctx.ui.notify(
-        `pi-ledger recording is ${state.enabled ? "ON" : "OFF"} for ${ctx.sessionManager.getCwd()} (${state.scope})`,
+        `pi-ledger recording is ${state.enabled ? "ON" : "OFF"} for ${ctx.sessionManager.getCwd()} (${state.scope})\nNotes: ${journal.paths.notesDirectory}`,
         "info",
       );
     },

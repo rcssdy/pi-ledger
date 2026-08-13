@@ -1,6 +1,6 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import type { JournalPaths } from "./types.js";
 
@@ -10,13 +10,26 @@ export function resolveJournalPaths(agentDirectory?: string): JournalPaths {
     agentDirectory === undefined ? getAgentDir() : expandTilde(agentDirectory);
   const resolvedAgentDirectory = resolve(configuredDirectory);
   const journalDirectory = join(resolvedAgentDirectory, "ledger");
+  const configuredNotesDirectory =
+    agentDirectory === undefined ? process.env.PI_LEDGER_NOTES_DIR : undefined;
 
   return {
     agentDirectory: resolvedAgentDirectory,
     journalDirectory,
     databasePath: join(journalDirectory, "ledger.sqlite"),
-    notesDirectory: join(journalDirectory, "notes"),
+    notesDirectory:
+      configuredNotesDirectory === undefined
+        ? join(journalDirectory, "notes")
+        : resolveNotesDirectory(configuredNotesDirectory),
   };
+}
+
+function resolveNotesDirectory(path: string): string {
+  const expanded = expandTilde(path);
+  if (!isAbsolute(expanded)) {
+    throw new Error("PI_LEDGER_NOTES_DIR must be an absolute path or start with ~");
+  }
+  return resolve(expanded);
 }
 
 function expandTilde(path: string): string {

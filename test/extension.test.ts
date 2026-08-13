@@ -186,7 +186,7 @@ describe("journal extension", () => {
     await command!.handler("on", context as never);
     expect(setStatus).toHaveBeenLastCalledWith("pi-ledger", undefined);
     expect(notify).toHaveBeenLastCalledWith(
-      "pi-ledger recording is ON for /work/project (session)",
+      `pi-ledger recording is ON for /work/project (session)\nNotes: ${journal.paths.notesDirectory}`,
       "info",
     );
     await invoke(

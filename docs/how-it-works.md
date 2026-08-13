@@ -84,7 +84,7 @@ The database uses foreign keys and write-ahead logging. Schema migrations run in
 
 ## How daily notes stay consistent
 
-Daily notes are at `~/.pi/agent/ledger/notes/YYYY-MM-DD.md` by default.
+Daily notes are at `~/.pi/agent/ledger/notes/YYYY-MM-DD.md` by default. Set `PI_LEDGER_NOTES_DIR` to an absolute or home-relative path to use another directory. This does not move the database or existing notes. Restart Pi and run `/ledger rebuild` after changing it.
 
 When an entry changes, pi-ledger increases the revision for its local date. The note writer reads the current revision and writes a complete note for that date. It clears the dirty state only if the revision did not change during the write.
 
