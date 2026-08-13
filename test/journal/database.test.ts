@@ -50,7 +50,33 @@ describe("journal database", () => {
       ],
     });
 
-    expect(journal.listDates()).toEqual(["2026-08-12"]);
+    expect(journal.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 1 }]);
+    journal.settleEntry({
+      piSessionId: "session-1",
+      userEntryId: "user-1",
+      settledAt: "2026-08-12T12:03:00.000Z",
+      models: [
+        {
+          provider: "openai",
+          model: "gpt-test",
+          responses: 2,
+          totalTokens: 135,
+          totalCost: 0.33,
+        },
+      ],
+      tools: [
+        {
+          name: "read",
+          executions: 3,
+          failures: 1,
+          totalTokens: 5,
+          totalCost: 0.01,
+        },
+      ],
+    });
+    expect(journal.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 2 }]);
+    journal.markNoteClean("2026-08-12", 1);
+    expect(journal.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 2 }]);
     expect(journal.listDailyEntries("2026-08-12")).toEqual([
       expect.objectContaining({
         piSessionId: "session-1",
@@ -64,7 +90,11 @@ describe("journal database", () => {
     journal.close();
     journal.close();
     const reopened = await openJournalDatabase({ agentDirectory });
-    expect(reopened.listDates()).toEqual(["2026-08-12"]);
+    expect(reopened.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 2 }]);
+    reopened.markNoteClean("2026-08-12", 2);
+    expect(reopened.listDirtyDates()).toEqual([]);
+    reopened.markAllNotesDirty();
+    expect(reopened.listDirtyDates()).toEqual([{ localDate: "2026-08-12", revision: 1 }]);
     reopened.close();
   });
 
@@ -84,13 +114,20 @@ describe("journal database", () => {
       "claude-test",
       "edit",
     );
+    record(journal, {
+      ...entry("Improve webhook retry diagnostics"),
+      userEntryId: "user-3",
+      cwd: "/work/diagnostics",
+    });
 
-    expect(journal.search({ query: "retry" })).toEqual([
-      expect.objectContaining({
-        request: "Add webhook retries",
-        snippet: expect.stringContaining("«"),
-      }),
-    ]);
+    expect(journal.search({ query: "retry" })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          request: "Add webhook retries",
+          snippet: expect.stringContaining("«"),
+        }),
+      ]),
+    );
     expect(
       journal.search({ query: "delivery", model: "anthropic/claude", tool: "edit" }),
     ).toHaveLength(1);
@@ -98,6 +135,23 @@ describe("journal database", () => {
     expect(journal.search({ query: "delivery", after: "2026-08-14" })).toEqual([]);
     expect(journal.search({ query: '"delivery scheduling"' })).toHaveLength(1);
     expect(journal.search({ query: "' OR 1=1 --" })).toEqual([]);
+    expect(journal.search({ query: "webhook scheduling" })).toHaveLength(3);
+    expect(journal.related(1)).toEqual([
+      expect.objectContaining({ request: "Improve webhook retry diagnostics" }),
+    ]);
+    expect(() => journal.search({ query: "delivery", after: "2026-99-99" })).toThrow(
+      "Invalid local date",
+    );
+    journal.close();
+  });
+
+  it("persists project recording exclusions", async () => {
+    const journal = await openJournalDatabase({ agentDirectory: temporaryDirectory() });
+    expect(journal.isProjectExcluded("/work/project")).toBe(false);
+    journal.setProjectExcluded("/work/project", true);
+    expect(journal.isProjectExcluded("/work/project")).toBe(true);
+    journal.setProjectExcluded("/work/project", false);
+    expect(journal.isProjectExcluded("/work/project")).toBe(false);
     journal.close();
   });
 

@@ -74,6 +74,29 @@ export const migrations: readonly Migration[] = [
       database.exec(SCHEMA);
     },
   },
+  {
+    version: 2,
+    migrate(database) {
+      database.exec(`
+        CREATE TABLE dirty_note_dates (
+          local_date TEXT PRIMARY KEY,
+          revision INTEGER NOT NULL CHECK (revision > 0)
+        ) STRICT, WITHOUT ROWID;
+        INSERT INTO dirty_note_dates (local_date, revision)
+          SELECT DISTINCT local_date, 1 FROM journal_entries WHERE state != 'pending';
+      `);
+    },
+  },
+  {
+    version: 3,
+    migrate(database) {
+      database.exec(`
+        CREATE TABLE excluded_projects (
+          cwd TEXT PRIMARY KEY
+        ) STRICT, WITHOUT ROWID;
+      `);
+    },
+  },
 ];
 
 export function applyMigrations(

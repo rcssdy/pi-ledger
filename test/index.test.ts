@@ -8,15 +8,17 @@ describe("pi-ledger extension", () => {
     expect(Object.keys(entrypoint)).toEqual(["default"]);
   });
 
-  it("registers journal recording and one search tool without commands or UI", () => {
+  it("registers journal recording, search tools, and one command", () => {
     const calls = new Set<PropertyKey>();
     const on = vi.fn();
     const registerTool = vi.fn();
+    const registerCommand = vi.fn();
     const pi = new Proxy(
-      { on, registerTool },
+      { on, registerCommand, registerTool },
       {
         get(target, property) {
-          if (property === "on" || property === "registerTool") return target[property];
+          if (property === "on" || property === "registerCommand" || property === "registerTool")
+            return target[property];
           return (..._arguments: unknown[]) => calls.add(property);
         },
       },
@@ -24,8 +26,12 @@ describe("pi-ledger extension", () => {
 
     registerPiLedger(pi);
 
-    expect(registerTool).toHaveBeenCalledOnce();
-    expect(registerTool.mock.calls[0]?.[0]).toMatchObject({ name: "journal_search" });
+    expect(registerTool.mock.calls.map(([tool]) => tool.name)).toEqual([
+      "journal_search",
+      "journal_related",
+    ]);
+    expect(registerCommand).toHaveBeenCalledOnce();
+    expect(registerCommand).toHaveBeenCalledWith("ledger", expect.any(Object));
     expect(on.mock.calls.map(([event]) => event)).toEqual([
       "session_start",
       "before_agent_start",
@@ -33,7 +39,6 @@ describe("pi-ledger extension", () => {
       "agent_settled",
       "session_shutdown",
     ]);
-    expect(calls).not.toContain("registerCommand");
     expect(calls).not.toContain("registerShortcut");
     expect(calls).not.toContain("registerMessageRenderer");
   });

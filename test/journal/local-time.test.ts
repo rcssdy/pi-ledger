@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { localTimestamp } from "../../src/journal/local-time.js";
+import { isLocalDate, localTimestamp } from "../../src/journal/local-time.js";
 
 describe("local journal timestamps", () => {
   it("keeps the UTC instant and system-local calendar fields", () => {
@@ -14,5 +14,7 @@ describe("local journal timestamps", () => {
 
   it("rejects invalid dates", () => {
     expect(() => localTimestamp(new Date(Number.NaN))).toThrow("invalid date");
+    expect(isLocalDate("2026-02-29")).toBe(false);
+    expect(isLocalDate("2028-02-29")).toBe(true);
   });
 });

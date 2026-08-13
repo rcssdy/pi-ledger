@@ -17,7 +17,8 @@ describe("daily note writer", () => {
     directories.push(notesDirectory);
     const writer = new DailyNoteWriter(
       {
-        listDates: () => ["2026-08-12"],
+        listDirtyDates: () => [],
+        markNoteClean() {},
         listDailyEntries: () => [
           {
             id: 1,
@@ -60,5 +61,30 @@ describe("daily note writer", () => {
     expect(readFileSync(path, "utf8")).toContain("**Usage:** 140 tokens · $0.34");
     expect(readFileSync(path, "utf8")).toContain("**Tools:** `read` ×2, 1 failed");
     expect(readFileSync(path, "utf8")).toContain("file:///sessions/one.jsonl");
+  });
+
+  it("keeps projects with the same directory name separate", async () => {
+    const notesDirectory = mkdtempSync(join(tmpdir(), "pi-ledger-notes-"));
+    directories.push(notesDirectory);
+    const entries = ["/clients/acme/api", "/personal/api"].map((cwd, index) => ({
+      id: index,
+      piSessionId: `session-${index}`,
+      userEntryId: `user-${index}`,
+      cwd,
+      request: `Request ${index}`,
+      state: "settled" as const,
+      startedAt: `2026-08-12T12:0${index}:00.000Z`,
+      localTime: `12:0${index}`,
+      models: [],
+      tools: [],
+    }));
+    const writer = new DailyNoteWriter(
+      { listDirtyDates: () => [], markNoteClean() {}, listDailyEntries: () => entries },
+      notesDirectory,
+    );
+
+    const markdown = readFileSync(await writer.regenerate("2026-08-12"), "utf8");
+    expect(markdown).toContain("## api — /clients/acme/api");
+    expect(markdown).toContain("## api — /personal/api");
   });
 });

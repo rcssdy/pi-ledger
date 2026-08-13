@@ -22,7 +22,12 @@ export interface BeginJournalEntry {
   localTime: string;
 }
 
-export interface PendingJournalEntry extends BeginJournalEntry {}
+export type PendingJournalEntry = BeginJournalEntry;
+
+export interface DirtyJournalDate {
+  localDate: string;
+  revision: number;
+}
 
 export interface ModelFacts {
   provider: string;
@@ -92,8 +97,13 @@ export interface Journal {
   listPendingEntries(piSessionId: string): readonly PendingJournalEntry[];
   settleEntry(input: SettleJournalEntry): RecordedJournalEntry | undefined;
   interruptPendingEntries(piSessionId: string, settledAt: string): readonly RecordedJournalEntry[];
-  listDates(): readonly string[];
+  isProjectExcluded(cwd: string): boolean;
+  setProjectExcluded(cwd: string, excluded: boolean): void;
+  listDirtyDates(): readonly DirtyJournalDate[];
+  markAllNotesDirty(): void;
+  markNoteClean(localDate: string, revision: number): void;
   listDailyEntries(localDate: string): readonly DailyJournalEntry[];
   search(query: JournalSearchQuery): readonly JournalSearchResult[];
+  related(entryId: number, limit?: number): readonly JournalSearchResult[];
   close(): void;
 }

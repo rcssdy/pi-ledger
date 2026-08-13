@@ -3,9 +3,11 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 
 import { resolveJournalPaths } from "./paths.js";
 import { applyMigrations } from "./schema.js";
+import { isLocalDate } from "./local-time.js";
 import type {
   BeginJournalEntry,
   DailyJournalEntry,
+  DirtyJournalDate,
   Journal,
   JournalPaths,
   JournalSearchQuery,
@@ -150,6 +152,7 @@ export class JournalDatabase implements Journal {
           tool.totalCost,
         );
       }
+      this.#markNoteDirty(row.localDate);
       recorded = { id: row.id, localDate: row.localDate, state };
     });
     return recorded;
@@ -170,6 +173,9 @@ export class JournalDatabase implements Journal {
           WHERE pi_session_id = ? AND state = 'pending'
         `)
         .run(settledAt, piSessionId);
+      for (const localDate of new Set(rows.map((row) => row.localDate))) {
+        this.#markNoteDirty(localDate);
+      }
       recorded.push(
         ...rows.map((row) => ({
           id: row.id,
@@ -181,14 +187,40 @@ export class JournalDatabase implements Journal {
     return recorded;
   }
 
-  listDates(): readonly string[] {
-    const rows = this.#database
-      .prepare(`
-        SELECT DISTINCT local_date AS localDate FROM journal_entries
-        WHERE state != 'pending' ORDER BY local_date
-      `)
-      .all() as Array<{ localDate: string }>;
-    return rows.map((row) => row.localDate);
+  listDirtyDates(): readonly DirtyJournalDate[] {
+    return this.#database
+      .prepare("SELECT local_date AS localDate, revision FROM dirty_note_dates ORDER BY local_date")
+      .all() as unknown as DirtyJournalDate[];
+  }
+
+  isProjectExcluded(cwd: string): boolean {
+    return (
+      this.#database.prepare("SELECT 1 FROM excluded_projects WHERE cwd = ?").get(cwd) !== undefined
+    );
+  }
+
+  setProjectExcluded(cwd: string, excluded: boolean): void {
+    this.#database
+      .prepare(
+        excluded
+          ? "INSERT OR IGNORE INTO excluded_projects (cwd) VALUES (?)"
+          : "DELETE FROM excluded_projects WHERE cwd = ?",
+      )
+      .run(cwd);
+  }
+
+  markAllNotesDirty(): void {
+    this.#database.exec(`
+      INSERT INTO dirty_note_dates (local_date, revision)
+        SELECT DISTINCT local_date, 1 FROM journal_entries WHERE state != 'pending'
+        ON CONFLICT (local_date) DO UPDATE SET revision = revision + 1
+    `);
+  }
+
+  markNoteClean(localDate: string, revision: number): void {
+    this.#database
+      .prepare("DELETE FROM dirty_note_dates WHERE local_date = ? AND revision = ?")
+      .run(localDate, revision);
   }
 
   listDailyEntries(localDate: string): readonly DailyJournalEntry[] {
@@ -214,8 +246,34 @@ export class JournalDatabase implements Journal {
   }
 
   search(query: JournalSearchQuery): readonly JournalSearchResult[] {
-    const match = toFtsQuery(query.query);
-    if (match === undefined) return [];
+    if (query.after !== undefined && !isLocalDate(query.after)) {
+      throw new Error(`Invalid local date: ${query.after}`);
+    }
+    if (query.before !== undefined && !isLocalDate(query.before)) {
+      throw new Error(`Invalid local date: ${query.before}`);
+    }
+    const terms = toFtsTerms(query.query);
+    if (terms.length === 0) return [];
+    const results = this.#search(query, terms.join(" AND "));
+    return results.length === 0 && terms.length > 1
+      ? this.#search(query, terms.join(" OR "))
+      : results;
+  }
+
+  related(entryId: number, limit = 10): readonly JournalSearchResult[] {
+    const row = this.#database
+      .prepare("SELECT request FROM journal_entries WHERE id = ? AND state != 'pending'")
+      .get(entryId) as { request: string } | undefined;
+    if (row === undefined) throw new Error(`Journal entry ${entryId} was not found`);
+    const query = topTerms(row.request, 6);
+    if (query === "") return [];
+    const cappedLimit = Math.min(Math.max(limit, 1), 10);
+    return this.search({ query, limit: cappedLimit + 1 })
+      .filter((result) => result.id !== entryId)
+      .slice(0, cappedLimit);
+  }
+
+  #search(query: JournalSearchQuery, match: string): readonly JournalSearchResult[] {
     const limit = Math.min(Math.max(query.limit ?? 10, 1), 20);
     const conditions = ["journal_entries_fts MATCH ?", "entry.state != 'pending'"];
     const parameters: Array<string | number> = [match];
@@ -308,6 +366,15 @@ export class JournalDatabase implements Journal {
       throw error;
     }
   }
+
+  #markNoteDirty(localDate: string): void {
+    this.#database
+      .prepare(`
+        INSERT INTO dirty_note_dates (local_date, revision) VALUES (?, 1)
+        ON CONFLICT (local_date) DO UPDATE SET revision = revision + 1
+      `)
+      .run(localDate);
+  }
 }
 
 /** Open the private journal database, creating and migrating it when necessary. */
@@ -336,13 +403,39 @@ export async function openJournalDatabase(
   }
 }
 
-function toFtsQuery(input: string): string | undefined {
+function toFtsTerms(input: string): string[] {
   const terms: string[] = [];
   for (const match of input.matchAll(/"([^"]+)"|([\p{L}\p{N}_-]+)/gu)) {
     const value = (match[1] ?? match[2])?.trim();
     if (value) terms.push(`"${value.replaceAll('"', '""')}"`);
   }
-  return terms.length === 0 ? undefined : terms.join(" AND ");
+  return terms;
+}
+
+const STOP_WORDS = new Set(
+  "also been code could from have into just like make more need only should some than that their them then there they this tool used user using want were what when where which will with would your".split(
+    " ",
+  ),
+);
+
+function topTerms(text: string, limit: number): string {
+  const counts = new Map<string, number>();
+  for (const word of text.toLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? []) {
+    if (word.length < 4 || STOP_WORDS.has(word)) continue;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return [...counts]
+    .sort(
+      ([left, leftCount], [right, rightCount]) =>
+        rightCount - leftCount || compareText(left, right),
+    )
+    .slice(0, limit)
+    .map(([word]) => word)
+    .join(" ");
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function escapeLike(value: string): string {

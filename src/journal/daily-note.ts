@@ -3,13 +3,15 @@ import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { isLocalDate } from "./local-time.js";
 import { singleLine, truncateCodePoints } from "./text.js";
-import type { DailyJournalEntry } from "./types.js";
+import type { DailyJournalEntry, DirtyJournalDate } from "./types.js";
 
 const LOCK_STALE_MILLISECONDS = 30_000;
 
 type JournalReader = {
-  listDates(): readonly string[];
+  listDirtyDates(): readonly DirtyJournalDate[];
+  markNoteClean(localDate: string, revision: number): void;
   listDailyEntries(localDate: string): readonly DailyJournalEntry[];
 };
 
@@ -22,14 +24,17 @@ export class DailyNoteWriter {
     this.#notesDirectory = notesDirectory;
   }
 
-  async regenerateAll(): Promise<readonly string[]> {
+  async regenerateDirty(): Promise<readonly string[]> {
     const paths: string[] = [];
-    for (const localDate of this.#journal.listDates()) paths.push(await this.regenerate(localDate));
+    for (const { localDate, revision } of this.#journal.listDirtyDates()) {
+      paths.push(await this.regenerate(localDate));
+      this.#journal.markNoteClean(localDate, revision);
+    }
     return paths;
   }
 
   async regenerate(localDate: string): Promise<string> {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) throw new Error(`Invalid local date: ${localDate}`);
+    if (!isLocalDate(localDate)) throw new Error(`Invalid local date: ${localDate}`);
     await mkdir(this.#notesDirectory, { recursive: true, mode: 0o700 });
     const notePath = join(this.#notesDirectory, `${localDate}.md`);
     const lockPath = `${notePath}.lock`;
@@ -54,16 +59,25 @@ export class DailyNoteWriter {
 export function renderDailyNote(localDate: string, entries: readonly DailyJournalEntry[]): string {
   const groups = new Map<string, DailyJournalEntry[]>();
   for (const entry of entries) {
-    const project = basename(entry.cwd) || "Unknown project";
-    const group = groups.get(project);
-    if (group === undefined) groups.set(project, [entry]);
+    const group = groups.get(entry.cwd);
+    if (group === undefined) groups.set(entry.cwd, [entry]);
     else group.push(entry);
   }
 
   const sections = [`# Daily Journal — ${localDate}`];
-  for (const project of [...groups.keys()].sort(compareText)) {
-    sections.push(`## ${escapeMarkdown(project)}`);
-    for (const entry of groups.get(project) ?? []) sections.push(renderEntry(entry));
+  const projects = [...groups.keys()].map((cwd) => ({
+    cwd,
+    name: basename(cwd) || "Unknown project",
+  }));
+  const nameCounts = new Map<string, number>();
+  for (const { name } of projects) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+  for (const project of projects.sort(
+    (left, right) => compareText(left.name, right.name) || compareText(left.cwd, right.cwd),
+  )) {
+    const title =
+      (nameCounts.get(project.name) ?? 0) > 1 ? `${project.name} — ${project.cwd}` : project.name;
+    sections.push(`## ${escapeMarkdown(title)}`);
+    for (const entry of groups.get(project.cwd) ?? []) sections.push(renderEntry(entry));
   }
   return `${sections.join("\n\n")}\n`;
 }

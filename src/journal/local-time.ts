@@ -4,6 +4,11 @@ export interface LocalTimestamp {
   localTime: string;
 }
 
+export function isLocalDate(value: string): boolean {
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
 /** Capture one instant and the system-local date and time used by the journal. */
 export function localTimestamp(date: Date): LocalTimestamp {
   if (Number.isNaN(date.valueOf())) {
