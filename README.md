@@ -2,13 +2,19 @@
 
 ### A local work journal for [Pi](https://pi.dev)
 
-**[How it works](#how-it-works)** · **[Journal](#journal)** · **[Search](#search)** · **[Commands](#commands)** · **[Data and privacy](#data-and-privacy)**
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Journal](#journal)** · **[Search](#search)** · **[Commands](#commands)** · **[Data and privacy](#data-and-privacy)**
 
 _A daily record of what you asked Pi to work on._
 
 `pi-ledger` creates a local Markdown journal from your Pi sessions. It records each request, when and where it was made, which models and tools were used, and the usage and cost reported by Pi. Every entry links back to the original session for the full conversation.
 
 The journal is built from recorded session facts. pi-ledger does not call a model to write summaries, guess whether work was completed, or copy conversations into its database.
+
+## Install
+
+```bash
+pi install npm:pi-ledger
+```
 
 ## How it works
 
