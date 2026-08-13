@@ -114,18 +114,22 @@ Search is intentionally scoped to **what you asked Pi**. Response bodies are not
 
 ## Commands
 
-pi-ledger records by default. One `/ledger` command shows its status, controls recording, and rebuilds the derived Markdown notes:
+pi-ledger records by default. Use the plain `on` and `off` commands for the current Pi session. Add `project` only when you want the setting to apply to every session started from the current working directory.
 
 ```text
 /ledger                    show recording status and the notes directory
-/ledger off                stop recording this session
-/ledger on                 record this session, even if its project is disabled
-/ledger off project        disable recording for this project
-/ledger on project         enable recording for this project
+/ledger off                stop recording the current session
+/ledger on                 record the current session
+/ledger off project        stop recording this project, now and in future sessions
+/ledger on project         record this project, now and in future sessions
 /ledger rebuild            regenerate every daily note from SQLite
 ```
 
-Session settings are the most specific and survive reloads and resumes. Project settings use the session's exact working directory and persist across sessions. When recording is disabled, a small `ledger off` footer status remains visible; search and note rebuilding continue to work.
+For example, use `/ledger off` to pause recording for one conversation. Use `/ledger off project` if you never want sessions in the current repository recorded, then `/ledger on project` when you want to opt that repository back in.
+
+A session setting overrides its project setting and survives reloads and resumes of that session. A project command changes the setting for the exact current working directory and makes the current session follow it, replacing any session override. Running `/ledger on` can therefore record one session inside a disabled project without enabling the project for other sessions.
+
+When recording is disabled, a small `ledger off` footer status shows whether the effective setting comes from the session or project. Search and note rebuilding continue to work.
 
 `/ledger rebuild` is normally unnecessary. Use it after deleting a note, after fixing a note-writing problem, or whenever the Markdown output no longer matches the database.
 
