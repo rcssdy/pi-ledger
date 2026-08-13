@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,7 +16,6 @@ describe("journal database", () => {
   it("records, aggregates, renders, and reopens journal facts", async () => {
     const agentDirectory = temporaryDirectory();
     const journal = await openJournalDatabase({ agentDirectory });
-    expect(existsSync(journal.paths.databasePath)).toBe(true);
     if (process.platform !== "win32") {
       expect(statSync(journal.paths.journalDirectory).mode & 0o777).toBe(0o700);
       expect(statSync(journal.paths.databasePath).mode & 0o777).toBe(0o600);

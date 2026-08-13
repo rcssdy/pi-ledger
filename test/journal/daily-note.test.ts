@@ -55,12 +55,13 @@ describe("daily note writer", () => {
     );
 
     const path = await writer.regenerate("2026-08-12");
+    const markdown = readFileSync(path, "utf8");
     expect(path).toBe(join(notesDirectory, "2026-08-12.md"));
-    expect(readFileSync(path, "utf8")).toContain("# Daily Journal — 2026-08-12");
-    expect(readFileSync(path, "utf8")).toContain(String.raw`Generate \#daily \[notes\]`);
-    expect(readFileSync(path, "utf8")).toContain("**Usage:** 140 tokens · $0.34");
-    expect(readFileSync(path, "utf8")).toContain("**Tools:** `read` ×2, 1 failed");
-    expect(readFileSync(path, "utf8")).toContain("file:///sessions/one.jsonl");
+    expect(markdown).toContain("# Daily Journal — 2026-08-12");
+    expect(markdown).toContain(String.raw`Generate \#daily \[notes\]`);
+    expect(markdown).toContain("**Usage:** 140 tokens · $0.34");
+    expect(markdown).toContain("**Tools:** `read` ×2, 1 failed");
+    expect(markdown).toContain("file:///sessions/one.jsonl");
   });
 
   it("keeps projects with the same directory name separate", async () => {
