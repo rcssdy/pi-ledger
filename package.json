@@ -10,6 +10,7 @@
     "sqlite"
   ],
   "homepage": "https://github.com/rcssdy/pi-ledger#readme",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rcssdy/pi-ledger.git"

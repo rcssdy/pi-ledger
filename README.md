@@ -126,3 +126,7 @@ Try the extension from the checkout:
 ```bash
 pi -e /path/to/pi-ledger/src/index.ts
 ```
+
+## License
+
+MIT
