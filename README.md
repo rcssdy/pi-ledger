@@ -1,8 +1,14 @@
+<div align="center">
+
+<img height="120" alt="pi-ledger" src="assets/pi-ledger.png" />
+
 # pi-ledger
 
 ### A local work journal for [Pi](https://pi.dev)
 
-**[Install](#install)** · **[How it works](#how-it-works)** · **[Technical details](docs/how-it-works.md)** · **[Journal](#journal)** · **[Search](#search)** · **[Commands](#commands)** · **[Data and privacy](#data-and-privacy)**
+**[Install](#install)** · **[How it works](#how-it-works)** · **[Commands](#commands)**
+
+</div>
 
 _A daily record of what you asked Pi to work on._
 
@@ -30,6 +36,8 @@ pi-ledger runs quietly in the background and records:
 The original Pi session remains the full transcript. The journal database contains only the facts needed to render and search journal entries.
 
 If recording or note generation fails, Pi continues normally and pi-ledger shows a warning. SQLite remains authoritative, and Markdown notes can be regenerated from it.
+
+For the recording lifecycle, storage model, search behaviour, and failure handling, see [How pi-ledger works](docs/how-it-works.md).
 
 ## Journal
 

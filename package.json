@@ -18,6 +18,7 @@
   "files": [
     "src",
     "docs",
+    "assets",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
